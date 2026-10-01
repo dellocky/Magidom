@@ -1,0 +1,33 @@
+
+
+
+HEROES -
+
+Weaver - Complexity level 5/5
+	Identity - Female Dual Shortsword, Close range, diving
+
+	Passive - Dancer
+		   Everytime the player controlling weaver casts a spell (global spell or a unit within radius), 
+		   Weaver gains becomes charged with said element for a small duration holding up
+		   a set number maximum, auto attacks while empowered will inflict the effects
+		   of the charges she is empowered by
+
+		   Casting a spell while charged will augment the spell with the most recently gained charge
+		   adding that spells elemental effect to the terrain where it is cast
+	
+
+		   NOTES - Think of charge as a stack, with the most recent spell going to the front
+		   - if another spell is cast while charge is full it will push the least recently gained
+		   charge out
+
+
+	Abilities - Q - Charge
+
+		    W - Parry
+
+		    E - 
+
+		    R - Whirlwind Spin - 
+			 After a short delay uses up all charge creating a path of destruction across the ground
+
+
