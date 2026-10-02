@@ -1,92 +1,105 @@
 extends Control
-## Main menu for Magidom — a magic MOBA.
-## Arcane dark theme: shader-driven aurora backdrop, cinematic frame overlay,
-## shimmering divider, and smoothed hover/focus micro-interactions.
+## Magic RTS main menu: navy atmosphere, an arcane seal, and blue cursor light.
 
 @onready var background: ColorRect = $Background
 @onready var overlay: ColorRect = $Overlay
+@onready var arcane_seal: ColorRect = $ArcaneSeal
+@onready var content: MarginContainer = $Content
 @onready var menu_column: VBoxContainer = $Content/MenuColumn
 @onready var play_button: Button = $Content/MenuColumn/PlayButton
 @onready var options_button: Button = $Content/MenuColumn/OptionsButton
 @onready var quit_button: Button = $Content/MenuColumn/QuitButton
 @onready var title: Label = $Content/MenuColumn/Title
+@onready var subtitle: Label = $Content/MenuColumn/Subtitle
+@onready var seal_caption: VBoxContainer = $SealCaption
+@onready var navigation_hint: Label = $Footer/Row/NavigationHint
 
 var _buttons: Array[Button] = []
+var _button_tweens: Dictionary[Button, Tween] = {}
+var _entrance_tween: Tween
+var _mouse_smooth := Vector2(0.72, 0.48)
 
 
 func _ready() -> void:
 	_buttons = [play_button, options_button, quit_button]
-
 	play_button.pressed.connect(_on_play_pressed)
 	options_button.pressed.connect(_on_options_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 
-	for b: Button in _buttons:
-		b.mouse_entered.connect(_on_button_hover.bind(b, true))
-		b.mouse_exited.connect(_on_button_hover.bind(b, false))
-		b.focus_entered.connect(_on_button_focus.bind(b, true))
-		b.focus_exited.connect(_on_button_focus.bind(b, false))
+	for button: Button in _buttons:
+		button.mouse_entered.connect(_update_button.bind(button))
+		button.mouse_exited.connect(_update_button.bind(button))
+		button.focus_entered.connect(_update_button.bind(button))
+		button.focus_exited.connect(_update_button.bind(button))
 
 	_update_aspect()
 	get_viewport().size_changed.connect(_update_aspect)
-
 	play_button.grab_focus()
-
-	# Wait one frame so layout has settled, then run the entrance animation.
+	menu_column.modulate.a = 0.0
 	await get_tree().process_frame
 	_play_entrance()
 
 
 func _update_aspect() -> void:
-	var size: Vector2 = get_viewport_rect().size
-	if size.y <= 0.0:
+	var viewport_size := get_viewport_rect().size
+	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
 		return
-	var aspect := size.x / size.y
+	var aspect := viewport_size.x / viewport_size.y
 	background.material.set_shader_parameter("aspect", aspect)
 	overlay.material.set_shader_parameter("aspect", aspect)
 
+	var compact := viewport_size.y < 680.0
+	var narrow := viewport_size.x < 900.0
+	var menu_width := clampf(viewport_size.x * 0.35, 320.0, 460.0)
+	menu_width = minf(menu_width, viewport_size.x * 0.85)
+	content.offset_right = menu_width
+	content.anchor_top = 0.16 if compact else 0.19
+	content.anchor_bottom = 0.86
+	menu_column.add_theme_constant_override("separation", 8 if compact else 12)
+	title.add_theme_font_size_override("font_size", int(clampf(menu_width * 0.16, 32.0, 74.0)))
+	subtitle.add_theme_font_size_override("font_size", 11 if menu_width < 380.0 else 14)
+	$Content/MenuColumn/Spacer.custom_minimum_size.y = 8.0 if compact else 18.0
+	for button: Button in _buttons:
+		button.custom_minimum_size.y = 50.0 if compact else 60.0
+		button.add_theme_font_size_override("font_size", 18 if compact else 21)
 
-func _process(_delta: float) -> void:
-	# Feed the cursor into the backdrop shader's halo.
-	var vp := get_viewport()
-	var mouse := vp.get_mouse_position() / vp.get_visible_rect().size
-	background.material.set_shader_parameter("mouse", mouse)
+	# Keep the seal circular; in narrow windows it becomes quiet background art.
+	var seal_size := minf(viewport_size.y * 0.86, viewport_size.x * 0.53)
+	arcane_seal.offset_left = -seal_size * 0.5
+	arcane_seal.offset_top = -seal_size * 0.5
+	arcane_seal.offset_right = seal_size * 0.5
+	arcane_seal.offset_bottom = seal_size * 0.5
+	arcane_seal.modulate.a = 0.22 if narrow else 1.0
+	seal_caption.visible = not narrow
+	navigation_hint.visible = viewport_size.x >= 640.0
 
-	# Gentle breathing on the title.
-	title.modulate.a = 0.9 + 0.1 * sin(Time.get_ticks_msec() / 1000.0 * 2.2)
+
+func _process(delta: float) -> void:
+	var viewport_size := get_viewport_rect().size
+	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
+		return
+	var mouse_target := get_viewport().get_mouse_position() / viewport_size
+	mouse_target = mouse_target.clamp(Vector2.ZERO, Vector2.ONE)
+	_mouse_smooth = _mouse_smooth.lerp(mouse_target, 1.0 - exp(-10.0 * delta))
+	background.material.set_shader_parameter("mouse", _mouse_smooth)
 
 
 func _play_entrance() -> void:
-	menu_column.pivot_offset = menu_column.size * 0.5
-	menu_column.modulate.a = 0.0
-	menu_column.scale = Vector2(0.95, 0.95)
-
-	var tween := create_tween().set_parallel(true)
-	tween.tween_property(menu_column, "modulate:a", 1.0, 0.6) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(menu_column, "scale", Vector2.ONE, 0.7) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	if _entrance_tween:
+		_entrance_tween.kill()
+	_entrance_tween = create_tween()
+	_entrance_tween.tween_property(menu_column, "modulate:a", 1.0, 0.65) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 
-func _on_button_hover(button: Button, entered: bool) -> void:
-	if entered:
-		_scale_button(button, Vector2(1.04, 1.04))
-	elif not button.has_focus():
-		_scale_button(button, Vector2.ONE)
-
-
-func _on_button_focus(button: Button, focused: bool) -> void:
-	if focused:
-		_scale_button(button, Vector2(1.05, 1.05))
-	elif not button.is_hovered():
-		_scale_button(button, Vector2.ONE)
-
-
-func _scale_button(button: Button, target: Vector2) -> void:
-	button.pivot_offset = button.size * 0.5
-	var tween := create_tween()
-	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween.tween_property(button, "scale", target, 0.16)
+func _update_button(button: Button) -> void:
+	if _button_tweens.has(button):
+		_button_tweens[button].kill()
+	var active := button.has_focus() or button.is_hovered()
+	var tint := Color.WHITE if active else Color(0.88, 0.93, 1.0)
+	var tween := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(button, "modulate", tint, 0.14)
+	_button_tweens[button] = tween
 
 
 func _on_play_pressed() -> void:

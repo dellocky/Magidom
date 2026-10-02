@@ -1,24 +1,48 @@
-[gd_scene load_steps=9 format=3 uid="uid://gx43ys7igjie"]
+[gd_scene format=3 uid="uid://gx43ys7igjie"]
 
-[ext_resource type="Script" path="res://ui/main_menu.gd" id="1_script"]
-[ext_resource type="Theme" path="res://ui/main_menu_theme.tres" id="2_theme"]
-[ext_resource type="Shader" path="res://ui/shaders/background_aurora.gdshader" id="3_bg"]
-[ext_resource type="Shader" path="res://ui/shaders/overlay_frame.gdshader" id="4_overlay"]
-[ext_resource type="Shader" path="res://ui/shaders/divider_shimmer.gdshader" id="5_divider"]
+[ext_resource type="Script" uid="uid://b4ie7f5vbfcyg" path="res://ui/main_menu.gd" id="1_script"]
+[ext_resource type="Theme" uid="uid://dt8sebpywgvjw" path="res://ui/main_menu_theme.tres" id="2_theme"]
+[ext_resource type="Shader" uid="uid://46bxooimggge" path="res://ui/shaders/background_aurora.gdshader" id="3_bg"]
+[ext_resource type="Shader" uid="uid://bshf8mp1wn2r5" path="res://ui/shaders/overlay_frame.gdshader" id="4_overlay"]
+[ext_resource type="Shader" uid="uid://bnxenjpmaj2sk" path="res://ui/shaders/divider_shimmer.gdshader" id="5_divider"]
+[ext_resource type="Shader" uid="uid://bfxe0vsb1mhiv" path="res://ui/shaders/arcane_sigil.gdshader" id="6_sigil"]
 
 [sub_resource type="ShaderMaterial" id="bg_mat"]
+resource_local_to_scene = true
 shader = ExtResource("3_bg")
-shader_parameter/aurora_strength = 1.0
-shader_parameter/mouse_strength = 1.0
+shader_parameter/col_deep = Color(0.016, 0.035, 0.075, 1)
+shader_parameter/col_mid = Color(0.035, 0.095, 0.18, 1)
+shader_parameter/col_azure = Color(0.12, 0.4, 0.72, 1)
+shader_parameter/col_ice = Color(0.42, 0.73, 1, 1)
 shader_parameter/time_speed = 0.05
+shader_parameter/aurora_strength = 0.65
+shader_parameter/mouse_strength = 1.0
+shader_parameter/mouse = Vector2(0.72, 0.48)
+shader_parameter/aspect = 1.777
+
+[sub_resource type="ShaderMaterial" id="sigil_mat"]
+shader = ExtResource("6_sigil")
+shader_parameter/line_color = Color(0.27, 0.62, 0.94, 1)
+shader_parameter/core_color = Color(0.67, 0.87, 1, 1)
 
 [sub_resource type="ShaderMaterial" id="overlay_mat"]
+resource_local_to_scene = true
 shader = ExtResource("4_overlay")
+shader_parameter/aspect = 1.777
+shader_parameter/vignette = 0.22
+shader_parameter/scanline = 0.025
+
+[sub_resource type="SystemFont" id="title_font"]
+font_names = PackedStringArray("Georgia", "Noto Serif", "DejaVu Serif")
 
 [sub_resource type="ShaderMaterial" id="divider_mat"]
 shader = ExtResource("5_divider")
+shader_parameter/tint_a = Color(0.24, 0.57, 0.88, 1)
+shader_parameter/tint_b = Color(0.08, 0.22, 0.4, 1)
+shader_parameter/speed = 0.12
 
-[node name="MainMenu" type="Control"]
+[node name="MainMenu" type="Control" unique_id=1611077638]
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -27,80 +51,191 @@ grow_vertical = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_script")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Background" type="ColorRect" parent="." unique_id=43052148]
 material = SubResource("bg_mat")
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(1, 1, 1, 1)
 
-[node name="Overlay" type="ColorRect" parent="."]
+[node name="ArcaneSeal" type="ColorRect" parent="." unique_id=1510095185]
+material = SubResource("sigil_mat")
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.73
+anchor_top = 0.49
+anchor_right = 0.73
+anchor_bottom = 0.49
+offset_left = -280.0
+offset_top = -280.0
+offset_right = 280.0
+offset_bottom = 280.0
+mouse_filter = 2
+
+[node name="Overlay" type="ColorRect" parent="." unique_id=612104294]
 material = SubResource("overlay_mat")
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(1, 1, 1, 1)
 
-[node name="Content" type="CenterContainer" parent="."]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="TopBar" type="HBoxContainer" parent="." unique_id=2071694857]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.075
+anchor_top = 0.065
+anchor_right = 0.925
+anchor_bottom = 0.065
+mouse_filter = 2
 
-[node name="MenuColumn" type="VBoxContainer" parent="Content"]
-theme_override_constants/separation = 18
+[node name="Spacer" type="Control" parent="TopBar" unique_id=986858769]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
 
-[node name="Title" type="Label" parent="Content/MenuColumn"]
+[node name="Content" type="MarginContainer" parent="." unique_id=2087507485]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.075
+anchor_top = 0.19
+anchor_right = 0.075
+anchor_bottom = 0.87
+offset_right = 400.0
+mouse_filter = 2
+
+[node name="MenuColumn" type="VBoxContainer" parent="Content" unique_id=1903533318]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Content/MenuColumn" unique_id=706387959]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.94, 1, 1)
+theme_override_colors/font_shadow_color = Color(0.15, 0.44, 0.78, 0.3)
+theme_override_constants/shadow_outline_size = 8
+theme_override_fonts/font = SubResource("title_font")
+theme_override_font_sizes/font_size = 64
 text = "MAGIDOM"
-horizontal_alignment = 1
-theme_override_colors/font_color = Color(1, 0.819608, 0.4, 1)
-theme_override_colors/font_outline_color = Color(0.372549, 0.168627, 0.568627, 1)
-theme_override_constants/outline_size = 14
-theme_override_font_sizes/font_size = 96
 
-[node name="Subtitle" type="Label" parent="Content/MenuColumn"]
-text = "MASTER  THE  ELEMENTS"
-horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.658824, 0.6, 0.85098, 1)
-theme_override_font_sizes/font_size = 20
+[node name="Subtitle" type="Label" parent="Content/MenuColumn" unique_id=440027023]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.67, 0.79, 1)
+theme_override_font_sizes/font_size = 14
+text = "Lorem Ipsum"
 
-[node name="Divider" type="ColorRect" parent="Content/MenuColumn"]
+[node name="Divider" type="ColorRect" parent="Content/MenuColumn" unique_id=607241187]
 material = SubResource("divider_mat")
-custom_minimum_size = Vector2(340, 4)
-size_flags_horizontal = 4
+custom_minimum_size = Vector2(0, 2)
+layout_mode = 2
 mouse_filter = 2
-color = Color(1, 1, 1, 1)
 
-[node name="Spacer" type="Control" parent="Content/MenuColumn"]
-custom_minimum_size = Vector2(0, 56)
+[node name="Spacer" type="Control" parent="Content/MenuColumn" unique_id=1939739660]
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+mouse_filter = 2
 
-[node name="PlayButton" type="Button" parent="Content/MenuColumn"]
-custom_minimum_size = Vector2(360, 62)
-size_flags_horizontal = 4
+[node name="PlayButton" type="Button" parent="Content/MenuColumn" unique_id=878288648]
+custom_minimum_size = Vector2(0, 62)
+layout_mode = 2
+focus_neighbor_top = NodePath("../QuitButton")
+focus_neighbor_bottom = NodePath("../OptionsButton")
+focus_next = NodePath("../OptionsButton")
+focus_previous = NodePath("../QuitButton")
+mouse_default_cursor_shape = 2
+theme_type_variation = &"PrimaryButton"
 text = "PLAY"
+alignment = 0
 
-[node name="OptionsButton" type="Button" parent="Content/MenuColumn"]
-custom_minimum_size = Vector2(360, 62)
-size_flags_horizontal = 4
+[node name="Arrow" type="Label" parent="Content/MenuColumn/PlayButton" unique_id=97783148]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.62, 0.83, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "›"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="OptionsButton" type="Button" parent="Content/MenuColumn" unique_id=904432845]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+focus_neighbor_top = NodePath("../PlayButton")
+focus_neighbor_bottom = NodePath("../QuitButton")
+focus_next = NodePath("../QuitButton")
+focus_previous = NodePath("../PlayButton")
+mouse_default_cursor_shape = 2
 text = "OPTIONS"
+alignment = 0
 
-[node name="QuitButton" type="Button" parent="Content/MenuColumn"]
-custom_minimum_size = Vector2(360, 62)
-size_flags_horizontal = 4
+[node name="QuitButton" type="Button" parent="Content/MenuColumn" unique_id=1772116351]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+focus_neighbor_top = NodePath("../OptionsButton")
+focus_neighbor_bottom = NodePath("../PlayButton")
+focus_next = NodePath("../PlayButton")
+focus_previous = NodePath("../OptionsButton")
+mouse_default_cursor_shape = 2
 text = "QUIT"
+alignment = 0
 
-[node name="Spacer2" type="Control" parent="Content/MenuColumn"]
-custom_minimum_size = Vector2(0, 36)
+[node name="SealCaption" type="VBoxContainer" parent="." unique_id=2124495028]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.73
+anchor_top = 0.84
+anchor_right = 0.73
+anchor_bottom = 0.84
+offset_left = -180.0
+offset_right = 180.0
+mouse_filter = 2
+theme_override_constants/separation = 8
 
-[node name="VersionLabel" type="Label" parent="Content/MenuColumn"]
-text = "v0.1.0  ·  pre-alpha"
-horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.352941, 0.290196, 0.501961, 1)
-theme_override_font_sizes/font_size = 15
+[node name="Footer" type="VBoxContainer" parent="." unique_id=17446840]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.075
+anchor_top = 1.0
+anchor_right = 0.925
+anchor_bottom = 1.0
+offset_top = -52.0
+offset_bottom = -20.0
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="Rule" type="ColorRect" parent="Footer" unique_id=1108520548]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.24, 0.43, 0.62, 0.25)
+
+[node name="Row" type="HBoxContainer" parent="Footer" unique_id=750788311]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="VersionLabel" type="Label" parent="Footer/Row" unique_id=1441762373]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.43, 0.55, 0.67, 1)
+theme_override_font_sizes/font_size = 11
+text = "v0.1.0   /   PRE-ALPHA"
+
+[node name="Spacer" type="Control" parent="Footer/Row" unique_id=1447806720]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="NavigationHint" type="Label" parent="Footer/Row" unique_id=927628146]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.43, 0.55, 0.67, 1)
+theme_override_font_sizes/font_size = 11
+text = "↑ ↓  NAVIGATE     ENTER  SELECT"
