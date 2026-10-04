@@ -1,0 +1,26 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/rts/rts_unit.gd" id="1_unit"]
+[ext_resource type="PackedScene" path="res://units/hawkRider/hawk_rider.tscn" id="2_visual"]
+[ext_resource type="Resource" path="res://units/hawkRider/hawk_rider_stats.tres" id="3_stats"]
+[ext_resource type="Resource" path="res://units/hawkRider/lightning_bolt.tres" id="4_bolt"]
+[ext_resource type="Resource" path="res://units/hawkRider/base_melter.tres" id="5_melter"]
+
+[sub_resource type="SphereShape3D" id="PickShape"]
+radius = 1.65
+
+[node name="HawkRiderUnit" type="Node3D"]
+script = ExtResource("1_unit")
+stats = ExtResource("3_stats")
+bolt = ExtResource("4_bolt")
+melter = ExtResource("5_melter")
+
+[node name="Visual" parent="." instance=ExtResource("2_visual")]
+
+[node name="PickBody" type="StaticBody3D" parent="."]
+collision_layer = 2
+collision_mask = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PickBody"]
+position = Vector3(0, 1, 0)
+shape = SubResource("PickShape")

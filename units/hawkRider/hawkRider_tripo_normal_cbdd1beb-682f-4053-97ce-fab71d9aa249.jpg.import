@@ -1,0 +1,44 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://cgsa2r32w3d2i"
+path.s3tc="res://.godot/imported/hawkRider_tripo_normal_cbdd1beb-682f-4053-97ce-fab71d9aa249.jpg-e30cc4ff0e9ea7eddac006c22ef764d3.s3tc.ctex"
+metadata={
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
+}
+generator_parameters={
+"md5": "15834d8aff4a51c31b222c7bde0d898c"
+}
+
+[deps]
+
+source_file="res://units/hawkRider/hawkRider_tripo_normal_cbdd1beb-682f-4053-97ce-fab71d9aa249.jpg"
+dest_files=["res://.godot/imported/hawkRider_tripo_normal_cbdd1beb-682f-4053-97ce-fab71d9aa249.jpg-e30cc4ff0e9ea7eddac006c22ef764d3.s3tc.ctex"]
+
+[params]
+
+compress/mode=2
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/uastc_level=0
+compress/rdo_quality_loss=0.0
+compress/hdr_compression=1
+compress/normal_map=1
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=1
+roughness/src_normal="res://units/hawkRider/hawkRider_tripo_normal_cbdd1beb-682f-4053-97ce-fab71d9aa249.jpg"
+process/channel_remap/red=0
+process/channel_remap/green=1
+process/channel_remap/blue=2
+process/channel_remap/alpha=3
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=0

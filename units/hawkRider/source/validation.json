@@ -1,0 +1,42 @@
+{
+  "idle": {
+    "frames_checked": 73,
+    "fps": 30,
+    "duration_seconds": 2.4,
+    "loop": true,
+    "loop_vertex_error_m": 5.280984981855556e-07,
+    "unintended_intersections": [],
+    "intentional_contact": "Left hand gripping staff is excluded from staff/rider overlap test."
+  },
+  "move": {
+    "frames_checked": 49,
+    "fps": 30,
+    "duration_seconds": 1.6,
+    "loop": true,
+    "loop_vertex_error_m": 5.230286352272107e-07,
+    "unintended_intersections": [],
+    "intentional_contact": "Left hand gripping staff is excluded from staff/rider overlap test."
+  },
+  "finger": {
+    "frames_checked": 109,
+    "midframes_checked": 108,
+    "fps": 30,
+    "duration_seconds": 3.6,
+    "loop": false,
+    "loop_vertex_error_m": null,
+    "idle_recovery_vertex_error_m": 6.07850493620966e-07,
+    "release_seconds": 1.82,
+    "peak_local_backward_displacement_m": 0.14,
+    "unintended_intersections": [],
+    "intentional_contact": "Left hand gripping staff is excluded from staff/rider overlap test."
+  },
+  "staff_twirl": {
+    "frames_checked": 145,
+    "fps": 30,
+    "duration_seconds": 4.8,
+    "loop": true,
+    "loop_vertex_error_m": 4.612745848943027e-07,
+    "unintended_intersections": [],
+    "intentional_contact": "Left hand gripping staff is excluded from staff/rider overlap test."
+  }
+}

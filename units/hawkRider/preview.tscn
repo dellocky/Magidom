@@ -1,0 +1,51 @@
+[gd_scene format=3 uid="uid://bmx08yql8ireg"]
+
+[ext_resource type="PackedScene" path="res://units/hawkRider/hawk_rider.tscn" id="1_unit"]
+[ext_resource type="Script" uid="uid://buf5qc45r2war" path="res://units/hawkRider/preview.gd" id="2_script"]
+
+[sub_resource type="Environment" id="Environment_preview"]
+background_mode = 1
+background_color = Color(0.045, 0.058, 0.075, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.75, 0.83, 1, 1)
+ambient_light_energy = 1.1
+tonemap_mode = 2
+
+[sub_resource type="LabelSettings" id="LabelSettings_caption"]
+font_size = 20
+font_color = Color(0.88, 0.93, 1, 1)
+outline_size = 3
+outline_color = Color(0.02, 0.03, 0.05, 1)
+
+[node name="HawkRiderPreview" type="Node3D" unique_id=1765350890]
+script = ExtResource("2_script")
+
+[node name="HawkRider" parent="." unique_id=1696207413 instance=ExtResource("1_unit")]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1400829655]
+environment = SubResource("Environment_preview")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="." unique_id=2009117958]
+transform = Transform3D(-0.8660254, 0.28678825, -0.4095761, 0, 0.81915206, 0.57357645, 0.50000006, 0.49673176, -0.7094065, 0, 0, 0)
+light_color = Color(1, 0.9, 0.78, 1)
+light_energy = 1.8
+
+[node name="FillLight" type="DirectionalLight3D" parent="." unique_id=155379953]
+transform = Transform3D(-0.76604444, -0.21984631, 0.6040228, 0, 0.9396926, 0.34202012, -0.64278764, 0.26200262, -0.7198463, 0, 0, 0)
+light_color = Color(0.55, 0.7, 1, 1)
+light_energy = 0.65
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=183464841]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 1.85, -4.3)
+current = true
+fov = 43.0
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1543848468]
+
+[node name="Caption" type="Label" parent="CanvasLayer" unique_id=1168373397]
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 850.0
+offset_bottom = 90.0
+text = "Hawk Rider"
+label_settings = SubResource("LabelSettings_caption")

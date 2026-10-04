@@ -1,0 +1,9 @@
+Godot Engine v4.6.1.stable.official.14d19694e - https://godotengine.org
+
+[godot_ai game_helper] registered mcp capture (debugger active=false, logger=true)
+HAWK_RIDER skeleton bones=99 clips=["finger", "idle", "move", "staff_twirl"]
+PASS idle seconds=2.40000009536743 tracks=101 loop=1
+PASS move seconds=1.60000002384186 tracks=101 loop=1
+PASS finger seconds=3.59999990463257 tracks=101 loop=0
+PASS staff_twirl seconds=4.80000019073486 tracks=101 loop=1
+HAWK_RIDER_VALIDATION_PASS

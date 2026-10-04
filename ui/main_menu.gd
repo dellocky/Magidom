@@ -103,7 +103,7 @@ func _update_button(button: Button) -> void:
 
 
 func _on_play_pressed() -> void:
-	var game_scene := "res://levels/game.tscn"
+	var game_scene := "res://scenes/testLevel.tscn"
 	if ResourceLoader.exists(game_scene):
 		get_tree().change_scene_to_file(game_scene)
 	else:
