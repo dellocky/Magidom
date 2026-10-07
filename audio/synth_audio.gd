@@ -1,6 +1,6 @@
 extends RefCounted
 ## Deterministic procedural sound effects generated in memory (no binary assets).
-## Kinds: "flap", "blast", "channel" (seamless loop), "charge".
+## Kinds: "flap", "blast", "channel" (seamless loop), "charge", "mopmeep".
 
 const MIX_RATE: int = 22050
 const LOOP_KINDS: Array[String] = ["channel"]
@@ -21,6 +21,8 @@ static func stream(kind: String) -> AudioStreamWAV:
 			samples = _channel()
 		"charge":
 			samples = _charge()
+		"mopmeep":
+			samples = _mopmeep()
 		_:
 			push_warning("SynthAudio: unknown kind '%s'" % kind)
 			return null
@@ -40,6 +42,8 @@ static func samples_for(kind: String) -> PackedFloat32Array:
 			return _channel()
 		"charge":
 			return _charge()
+		"mopmeep":
+			return _mopmeep()
 	return PackedFloat32Array()
 
 
@@ -186,4 +190,58 @@ static func _charge() -> PackedFloat32Array:
 		out[n - 1 - i] *= float(i) / 400.0
 		out[i] *= float(i) / 400.0
 	_normalize(out, 0.8)
+	return out
+
+
+## A cartoonish two-syllable "mop...meep" deny sound. Low nasal syllable, brief
+## plosive gap, then a high rising bleat. Synthesized, so it is an approximation
+## of a person saying "mop-meep", not a real voice recording.
+static func _mopmeep() -> PackedFloat32Array:
+	var dur: float = 0.62
+	var n: int = roundi(dur * MIX_RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var rng: RandomNumberGenerator = _rng(5505)
+	# Syllable windows: "mop" ends with a lip-closure, then "meep".
+	var mop_end: float = 0.24
+	var meep_start: float = 0.30
+	var meep_end: float = 0.58
+	var phase: float = 0.0
+	var lp: float = 0.0
+	for i in n:
+		var t: float = float(i) / MIX_RATE
+		var s: float = 0.0
+		if t < mop_end:
+			var u: float = t / mop_end
+			var env: float = pow(sin(PI * u), 1.5)
+			var f: float = 150.0 - 30.0 * u
+			phase += TAU * f / MIX_RATE
+			var voice: float = sin(phase) + 0.5 * sin(2.0 * phase) + 0.25 * sin(3.0 * phase)
+			var noise: float = rng.randf() * 2.0 - 1.0
+			lp += (noise - lp) * 0.25
+			# Nasal "m" onset leans on the low harmonic, tail closes with noise.
+			var closure: float = smoothstep(0.55, 1.0, u)
+			s = (voice * (0.6 - 0.3 * closure) + lp * 0.6 * (1.0 - closure) \
+				+ noise * closure * 0.4) * env * 1.2
+		elif t < meep_start:
+			# Closed-lip silence with a tiny pop at the release.
+			var u: float = (t - mop_end) / (meep_start - mop_end)
+			var pop: float = exp(-u * 40.0) * 0.5
+			s = pop * (0.6 + 0.4 * sin(TAU * 90.0 * t))
+			s *= 0.8
+		elif t < meep_end:
+			var u: float = (t - meep_start) / (meep_end - meep_start)
+			var env: float = pow(sin(PI * u), 1.2)
+			var f: float = 380.0 + 180.0 * u
+			phase += TAU * f / MIX_RATE
+			var voice: float = sin(phase) + 0.45 * sin(2.0 * phase) + 0.2 * sin(3.0 * phase)
+			var noise: float = rng.randf() * 2.0 - 1.0
+			lp += (noise - lp) * 0.3
+			s = (voice * 0.8 + lp * (noise - lp) * 3.0) * env
+		# Master fade-out at the very tail to avoid a click.
+		if t > meep_end:
+			var tail: float = clampf((dur - t) / 0.04, 0.0, 1.0)
+			s *= tail
+		out[i] = s
+	_normalize(out, 0.85)
 	return out

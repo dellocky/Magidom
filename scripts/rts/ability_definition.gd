@@ -2,6 +2,8 @@ extends Resource
 ## Balance data is shared; cast timers and targets always belong to the unit.
 
 @export var display_name: String = "Lightning Bolt"
+@export_multiline var description: String = ""
+@export_multiline var lore: String = ""
 @export var animation: StringName = &"finger"
 @export var damage_type: StringName = &"BAM"
 @export var damage: float = 500.0

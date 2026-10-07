@@ -7,6 +7,7 @@ var hud: CanvasLayer
 var level: Node3D
 var selected: Array = []
 var targeting: String = ""
+var global_spell: Resource
 var _dragging: bool = false
 var _start := Vector2.ZERO
 var _additive: bool = false
@@ -19,6 +20,7 @@ func _ready() -> void:
 	hud.melter_requested.connect(begin_targeting.bind("melter"))
 	hud.bolt_requested.connect(begin_targeting.bind("attack"))
 	hud.stop_requested.connect(stop_selected)
+	hud.global_spell_requested.connect(_on_global_spell_requested)
 
 
 func _process(_delta: float) -> void:
@@ -33,7 +35,9 @@ func _process(_delta: float) -> void:
 	if is_instance_valid(_preview):
 		_preview.global_position = Units.clamp_to_arena(rig.ground_point(get_viewport().get_mouse_position())) + Vector3.UP * 0.09
 		_preview.visible = not hud.pointer_over_ui(get_viewport().get_mouse_position())
-		if _can_control(_preview_caster) and _preview_caster in selected and _preview_caster.melter != null:
+		if targeting == "global":
+			pass  # Faction spells have no caster or range ring; the ring follows the cursor.
+		elif _can_control(_preview_caster) and _preview_caster in selected and _preview_caster.melter != null:
 			_range_preview.global_position = _preview_caster.global_position + Vector3.UP * 0.075
 			_update_ring_radius(_preview, Units.to_metres(_preview_caster.effective_melter_radius_units(0.0)))
 			_update_ring_radius(_range_preview, Units.to_metres(_preview_caster.melter.range_units))
@@ -55,9 +59,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			begin_targeting("melter")
 		elif event.is_action_pressed("camera_focus"):
 			rig.focus_units(selected)
-		elif event.is_action_pressed("ui_cancel"):
-			cancel_targeting()
-			_cancel_drag()
 	if not event is InputEventMouseButton or not event.pressed:
 		return
 	if hud.pointer_over_ui(event.position):
@@ -146,7 +147,7 @@ func ground_hit(screen: Vector2) -> Variant:
 
 func command_at(screen: Vector2) -> void:
 	if selected.is_empty():
-		hud.show_message("Select a Hawk Rider first.")
+		hud.play_deny()
 		return
 	var target := pick_unit(screen)
 	var point: Variant = ground_hit(screen)
@@ -166,9 +167,7 @@ func command_at(screen: Vector2) -> void:
 	if not movers.is_empty():
 		FX.move_marker(level, Units.clamp_to_arena(point) + Vector3.UP * 0.09)
 	if accepted == 0:
-		hud.show_message("No ready caster: check cooldown, mana and cast lock. S interrupts Base Melter.")
-	elif target != null:
-		hud.show_message("Lightning Bolt — opposing teams only.")
+		hud.play_deny()
 
 
 static func formation_offset(index: int, count: int) -> Vector3:
@@ -180,11 +179,11 @@ static func formation_offset(index: int, count: int) -> Vector3:
 func begin_targeting(mode: String) -> void:
 	cancel_targeting()
 	if selected.is_empty():
-		hud.show_message("Select a Hawk Rider first.")
+		hud.play_deny()
 		return
 	var eligible: Array = selected.filter(func(unit): return _can_control(unit) and (unit.can_cast_melter() if mode == "melter" else unit.can_cast_bolt()))
 	if eligible.is_empty():
-		hud.show_message("No ready caster: check cooldown, mana and cast lock. S interrupts Base Melter.")
+		hud.play_deny()
 		return
 	targeting = mode
 	hud.set_targeting(mode)
@@ -192,12 +191,42 @@ func begin_targeting(mode: String) -> void:
 		_preview_caster = eligible[0]
 		_preview = FX.ring(level, Color(0.45, 0.72, 1), Units.to_metres(eligible[0].effective_melter_radius_units(0.0)))
 		_range_preview = FX.ring(level, Color(0.3, 0.5, 0.7, 0.35), Units.to_metres(eligible[0].melter.range_units))
-		hud.show_message("Base Melter: click ground inside the range ring. RMB / Esc cancels.")
-	else:
-		hud.show_message("Lightning Bolt: click an opposing unit. RMB / Esc cancels.")
+
+
+func _on_global_spell_requested() -> void:
+	var gs := get_node_or_null("/root/GameState")
+	if gs == null:
+		hud.play_deny()
+		return
+	var spell: Resource = gs.current_global_spell()
+	if spell == null:
+		hud.play_deny()
+		return
+	begin_global_targeting(spell)
+
+
+func begin_global_targeting(spell: Resource) -> void:
+	cancel_targeting()
+	global_spell = spell
+	targeting = "global"
+	_preview_caster = null
+	hud.set_targeting("global")
+	var radius: float = float(spell.get("aoe_radius_units"))
+	_preview = FX.ring(level, Color(0.92, 0.62, 0.32), Units.to_metres(radius))
 
 
 func _confirm_target(screen: Vector2) -> void:
+	if targeting == "global":
+		var point: Variant = ground_hit(screen)
+		if point == null:
+			return
+		var gs := get_node_or_null("/root/GameState")
+		if gs != null and gs.cast_global():
+			level.cast_global_spell(point)
+			cancel_targeting()
+		else:
+			hud.play_deny()
+		return
 	var count: int = 0
 	if targeting == "melter":
 		var point: Variant = ground_hit(screen)
@@ -211,19 +240,19 @@ func _confirm_target(screen: Vector2) -> void:
 	if count > 0:
 		cancel_targeting()
 	else:
-		hud.show_message("No eligible caster: check team, range, mana, cooldown and cast lock.")
+		hud.play_deny()
 
 
 func stop_selected() -> void:
 	cancel_targeting()
-	var stopped: int = 0
 	for unit in selected:
-		if _can_control(unit) and unit.issue_stop(): stopped += 1
-	hud.show_message("Stopped %d unit(s). Lightning Bolt cannot be interrupted." % stopped)
+		if _can_control(unit):
+			unit.issue_stop()
 
 
 func cancel_targeting() -> void:
 	targeting = ""
+	global_spell = null
 	if is_instance_valid(_preview): _preview.queue_free()
 	if is_instance_valid(_range_preview): _range_preview.queue_free()
 	_preview = null

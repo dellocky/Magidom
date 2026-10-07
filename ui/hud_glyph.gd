@@ -48,6 +48,10 @@ func _draw() -> void:
 			draw_circle(c, side * 0.09, color)
 			draw_line(_p(o, side, 0.5, 0.0), _p(o, side, 0.5, 0.12), color, w * 0.8)
 			draw_line(_p(o, side, 0.5, 0.88), _p(o, side, 0.5, 1.0), color, w * 0.8)
+		"buff":
+			# Two rising chevrons: a speed/buff mark.
+			draw_polyline(PackedVector2Array([_p(o, side, 0.24, 0.78), _p(o, side, 0.42, 0.46), _p(o, side, 0.60, 0.78)]), color, w)
+			draw_polyline(PackedVector2Array([_p(o, side, 0.56, 0.90), _p(o, side, 0.74, 0.58), _p(o, side, 0.92, 0.90)]), color, w)
 		_:
 			draw_rect(Rect2(o + Vector2(side, side) * 0.22, Vector2(side, side) * 0.56), color, false, 1.0)
 

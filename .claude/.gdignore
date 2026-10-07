@@ -1,0 +1,2 @@
+# Keep Godot's filesystem scan (res://) out of Claude Code's working directory,
+# including the .claude/worktrees copies of the project.

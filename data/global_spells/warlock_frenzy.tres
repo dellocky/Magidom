@@ -1,0 +1,17 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://scripts/rts/global_spell.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Bloodpact Frenzy"
+icon_kind = "buff"
+key = "1"
+description = "Drive every ally within 500 units into a bloody frenzy: +50% move speed for 10 seconds, but each burns 5% of its max health every second."
+lore = "The Warlock's bargain is simple: run faster, bleed faster."
+mana_cost = 150.0
+cooldown = 15.0
+aoe_radius_units = 500.0
+duration = 10.0
+move_speed_bonus_fraction = 0.5
+hp_drain_fraction_per_second = 0.05

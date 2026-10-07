@@ -5,6 +5,8 @@
 [resource]
 script = ExtResource("1")
 display_name = "Base Melter"
+description = "Channels a growing vortex of lightning that strikes enemies inside and drags their feet with static."
+lore = "Older warlocks whisper that the melter remembers every soul it has burned."
 animation = &"staff_twirl"
 damage_type = &"ELECTRICAL"
 damage = 40.0

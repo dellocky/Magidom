@@ -2,9 +2,11 @@ extends CanvasLayer
 ## Test arena HUD. Static scene nodes (test_level_hud.tscn): Root, SelectionOverlay,
 ## HeroPanel, ItemSlots (instance of item_slots.tscn) and Minimap (placeholder
 ## Control a minimap script can be attached to). Panel contents, spawn panes,
-## header and toast are built at runtime. Real panels are MOUSE_FILTER_STOP and
-## registered in pointer_over_ui(); the full-screen root/overlay ignore the mouse.
+## the faction global-spell bar and the hover tooltip are built at runtime. Real
+## panels are MOUSE_FILTER_STOP and registered in pointer_over_ui(); the
+## full-screen root/overlay ignore the mouse.
 ##
+## Top centre: faction global-spell slot + animated mana pool (0..1000) + money.
 ## Bottom strip: portrait | damage/armor/move stats (hover/focus popup) |
 ## [Bolt][Melter][empty][empty] + Stop, health, mana, cast bar.  Items and the
 ## minimap are independent components.
@@ -13,7 +15,7 @@ signal spawn_requested(team: int)
 signal melter_requested()
 signal bolt_requested()
 signal stop_requested()
-signal menu_requested()
+signal global_spell_requested()
 
 const THEME_PATH := "res://ui/main_menu_theme.tres"
 const OVERLAY_SCRIPT := "res://ui/selection_overlay.gd"
@@ -21,6 +23,8 @@ const ITEM_SLOTS_SCENE := "res://ui/item_slots.tscn"
 const HAWK_SCENE := "res://units/hawkRider/hawk_rider.tscn"
 const SLOT_SCRIPT := preload("res://ui/ability_slot.gd")
 const GLYPH_SCRIPT := preload("res://ui/hud_glyph.gd")
+const TOOLTIP_SCRIPT := preload("res://ui/ability_tooltip.gd")
+const Audio = preload("res://audio/synth_audio.gd")
 
 const FRIENDLY := Color(0.38, 0.82, 1.0)
 const ENEMY := Color(1.0, 0.47, 0.40)
@@ -35,6 +39,7 @@ const GLYPH_ARMOR := Color(0.62, 0.78, 1.0)
 const GLYPH_MOVE := Color(0.55, 0.92, 0.55)
 const GLYPH_BOLT := Color(1.0, 0.92, 0.45)
 const GLYPH_MELTER := Color(0.78, 0.55, 1.0)
+const GLYPH_MANA := Color(0.55, 0.78, 1.0)
 
 const STATE_NAMES := ["Idle", "Moving", "Chasing", "Lightning Bolt", "Base Melter", "Dead"]
 const STATE_BOLT := 3
@@ -59,13 +64,20 @@ var _selected: Array = []
 var _targeting := ""
 var _blockers: Array[Control] = []
 
-var _header: PanelContainer
 var _left_panel: PanelContainer
 var _right_panel: PanelContainer
 var _bottom: PanelContainer  # HeroPanel
-var _toast_panel: PanelContainer
-var _toast_label: Label
-var _toast_tween: Tween
+var _global_panel: PanelContainer
+var _global_btn: Button
+var _global_spell_label: Label
+var _global_mana_bar: ColorRect
+var _global_mana_mat: ShaderMaterial
+var _global_mana_label: Label
+var _money_label: Label
+var _tooltip: PanelContainer
+var _deny_player: AudioStreamPlayer
+var _ally_spawn_btn: Button
+var _ally_spawn_name: Label
 
 var _portrait_vp: SubViewport
 var _portrait_rects: Array[TextureRect] = []
@@ -93,8 +105,6 @@ var _empty_slots: Array[Button] = []
 var _slot_row: HBoxContainer
 var _stop_btn: Button
 var _bars: Array[ProgressBar] = []
-var _header_title: Label
-var _header_sub: Label
 var _layout_sig: Array = []
 var _tier := 2
 
@@ -111,6 +121,11 @@ func _ready() -> void:
 	_apply_layout_deferred()
 	set_selection([])
 	_start_portrait()
+	var gs := _state_node()
+	if gs != null:
+		gs.faction_changed.connect(_on_faction_changed)
+	_update_ally_spawn()
+	_refresh_global()
 
 
 # ---------------------------------------------------------------- public API
@@ -134,27 +149,25 @@ func set_vision_system(service: Node) -> void:
 	_propagate_vision()
 
 
-func show_message(text: String) -> void:
-	if _toast_label == null:
+## Player-wide session state (faction, global mana, money) from the autoload.
+func _state_node() -> Node:
+	return get_node_or_null("/root/GameState")
+
+
+## Play the synthesized "mop-meep" deny sound. Replaces every on-screen popup:
+## an invalid order just chirps instead of flashing text.
+func play_deny() -> void:
+	if _deny_player == null or _deny_player.stream == null:
 		return
-	_toast_label.text = text
-	_toast_panel.visible = true
-	_place_toast()
-	await get_tree().process_frame
-	_place_toast()
-	_toast_panel.modulate.a = 1.0
-	if _toast_tween:
-		_toast_tween.kill()
-	_toast_tween = create_tween()
-	_toast_tween.tween_interval(2.0)
-	_toast_tween.tween_property(_toast_panel, "modulate:a", 0.0, 0.5)
-	_toast_tween.tween_callback(func() -> void: _toast_panel.visible = false)
+	_deny_player.play()
 
 
 func set_targeting(mode: String) -> void:
 	_targeting = mode
 	_bolt_btn.set_pressed_no_signal(mode == "attack")
 	_melter_btn.set_pressed_no_signal(mode == "melter")
+	if _global_btn != null:
+		_global_btn.set_pressed_no_signal(mode == "global")
 	_refresh()
 
 
@@ -245,12 +258,13 @@ func _build() -> void:
 		_blockers.append(_items)
 	_minimap.mouse_filter = Control.MOUSE_FILTER_STOP
 	_blockers.append(_minimap)
-	_build_header()
+	_build_global_bar()
 	_build_spawn_panel(0)
 	_build_spawn_panel(1)
 	_build_hero()
 	_build_stats_popup()
-	_build_toast()
+	_build_tooltip()
+	_build_deny()
 
 
 func _style_panel(p: Control, accent: Color) -> void:
@@ -307,24 +321,69 @@ func _style_button(b: Button, accent: Color) -> void:
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
 
-func _build_header() -> void:
-	_header = _panel(PANEL_EDGE.lightened(0.2))
+func _build_global_bar() -> void:
+	_global_panel = _panel(PANEL_EDGE.lightened(0.25))
+	_global_panel.name = "GlobalBar"
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	_global_panel.add_child(v)
+
+	# Faction global spell hotbar (single slot; grows as factions gain spells).
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	_header.add_child(row)
-	_header_title = _label("TEST ARENA", 15, FRIENDLY)
-	_header_title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(_header_title)
-	_header_sub = _label("LMB select   RMB move / attack   Q Melter   S Stop", 11, TEXT_DIM)
-	_header_sub.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(_header_sub)
-	var menu := Button.new()
-	menu.text = "Menu"
-	menu.custom_minimum_size = Vector2(64, 28)
-	menu.add_theme_font_size_override("font_size", 13)
-	_style_button(menu, FRIENDLY)
-	menu.pressed.connect(func() -> void: menu_requested.emit())
-	row.add_child(menu)
+	row.add_theme_constant_override("separation", 6)
+	v.add_child(row)
+	_global_btn = _ability_slot("buff", "1", GLYPH_MANA, _on_global_pressed)
+	_global_btn.name = "GlobalSpellSlot"
+	_global_btn.tooltip_text = ""
+	row.add_child(_global_btn)
+	_global_spell_label = _label("No global spell", 12, TEXT_DIM)
+	_global_spell_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_global_spell_label.clip_text = true
+	_global_spell_label.custom_minimum_size.x = 140
+	row.add_child(_global_spell_label)
+
+	# Global mana pool (0..1000), drawn with an animated shader fill.
+	_global_mana_bar = ColorRect.new()
+	_global_mana_bar.name = "GlobalManaBar"
+	_global_mana_bar.custom_minimum_size = Vector2(246, 20)
+	_global_mana_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_global_mana_mat = ShaderMaterial.new()
+	_global_mana_mat.shader = load("res://ui/shaders/mana_bar.gdshader")
+	_global_mana_mat.set_shader_parameter("core_color", MANA)
+	_global_mana_mat.set_shader_parameter("hi_color", Color(0.5, 0.92, 1.0))
+	_global_mana_mat.set_shader_parameter("fill", 0.5)
+	_global_mana_bar.material = _global_mana_mat
+	v.add_child(_global_mana_bar)
+	_global_mana_label = _label("Mana 0 / 1000", 11, Color(1, 1, 1))
+	_global_mana_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_global_mana_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_global_mana_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_global_mana_label.add_theme_color_override("font_outline_color", Color(0, 0.02, 0.05, 0.95))
+	_global_mana_label.add_theme_constant_override("outline_size", 3)
+	_global_mana_bar.add_child(_global_mana_label)
+
+	_money_label = _label("Money 0", 11, Color(1.0, 0.85, 0.5))
+	_money_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(_money_label)
+
+	_global_btn.mouse_entered.connect(_show_global_tooltip)
+	_global_btn.mouse_exited.connect(_hide_tooltip)
+
+
+func _build_tooltip() -> void:
+	if _tooltip != null:
+		return
+	_tooltip = TOOLTIP_SCRIPT.new()
+	_tooltip.visible = false
+	_tooltip.z_index = 100
+	_root.add_child(_tooltip)
+
+
+func _build_deny() -> void:
+	_deny_player = AudioStreamPlayer.new()
+	_deny_player.stream = Audio.stream("mopmeep")
+	_deny_player.volume_db = -5.0
+	add_child(_deny_player)
 
 
 func _build_spawn_panel(team: int) -> void:
@@ -363,6 +422,10 @@ func _build_spawn_panel(team: int) -> void:
 	team_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(team_l)
 	_portrait_labels.append(team_l)
+
+	if team == 0:
+		_ally_spawn_btn = btn
+		_ally_spawn_name = name_l
 
 
 func _meter(color: Color) -> Array:
@@ -470,8 +533,12 @@ func _build_hero() -> void:
 	_melter_btn = _ability_slot("melter", "Q", GLYPH_MELTER, _on_melter_pressed)
 	_bolt_btn.name = "BoltSlot"
 	_melter_btn.name = "MelterSlot"
-	_bolt_btn.tooltip_text = "Lightning Bolt: right-click an enemy unit"
-	_melter_btn.tooltip_text = "Base Melter: choose a ground target (Q)"
+	_bolt_btn.tooltip_text = ""
+	_melter_btn.tooltip_text = ""
+	_bolt_btn.mouse_entered.connect(_show_bolt_tooltip)
+	_bolt_btn.mouse_exited.connect(_hide_tooltip)
+	_melter_btn.mouse_entered.connect(_show_melter_tooltip)
+	_melter_btn.mouse_exited.connect(_hide_tooltip)
 	_slot_row.add_child(_bolt_btn)
 	_slot_row.add_child(_melter_btn)
 	for i in 2:
@@ -547,20 +614,6 @@ func _build_stats_popup() -> void:
 	_blockers.append(_stats_popup)
 
 
-func _build_toast() -> void:
-	_toast_panel = PanelContainer.new()
-	_toast_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sb := _box(Color(0.05, 0.10, 0.18, 0.93), Color(0.95, 0.8, 0.35, 0.9))
-	sb.set_content_margin_all(7)
-	_toast_panel.add_theme_stylebox_override("panel", sb)
-	_toast_label = _label("", 14, Color(1.0, 0.93, 0.7))
-	_toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_toast_panel.add_child(_toast_label)
-	_toast_panel.visible = false
-	_root.add_child(_toast_panel)
-
-
 # ------------------------------------------------------------------- layout
 
 func _apply_layout_deferred() -> void:
@@ -590,13 +643,13 @@ func _minimap_side(vs: Vector2) -> float:
 func _place_panels() -> void:
 	var vs := get_viewport().get_visible_rect().size
 	var m := MARGIN
-	var panels: Array = [_header, _left_panel, _right_panel, _bottom]
+	var panels: Array = [_global_panel, _left_panel, _right_panel, _bottom]
 	if _items != null:
 		panels.append(_items)
 	for p in panels:
 		(p as Control).reset_size()
-	var hs := _header.get_combined_minimum_size()
-	_place_panel(_header, (vs.x - hs.x) * 0.5, m)
+	var gs := _global_panel.get_combined_minimum_size()
+	_place_panel(_global_panel, (vs.x - gs.x) * 0.5, m)
 	var ls := _left_panel.get_combined_minimum_size()
 	_place_panel(_left_panel, m, (vs.y - ls.y) * 0.5)
 	var rs := _right_panel.get_combined_minimum_size()
@@ -620,16 +673,7 @@ func _place_panels() -> void:
 	_place_panel(_bottom, x0, vs.y - bs.y - m)
 	if show_it:
 		_place_panel(_items, x0 + bs.x + gap, vs.y - isz.y - m)
-	_place_toast()
 	_update_stats_popup()
-
-
-func _place_toast() -> void:
-	var vs := get_viewport().get_visible_rect().size
-	var w := minf(vs.x - 32.0, 460.0)
-	_toast_label.custom_minimum_size.x = w - 16.0
-	_toast_panel.reset_size()
-	_place_panel(_toast_panel, (vs.x - w) * 0.5, 52.0, w)
 
 
 func _apply_layout() -> void:
@@ -649,6 +693,8 @@ func _apply_layout() -> void:
 		(b.get_child(0) as Control).custom_minimum_size = Vector2(80 if _tier < 2 else 88, spawn_portrait + 28)
 	for b in [_bolt_btn, _melter_btn] + _empty_slots:
 		(b as Control).custom_minimum_size = Vector2(slot, slot)
+	if _global_btn is Control:
+		_global_btn.custom_minimum_size = Vector2(slot, slot)
 	_stop_btn.custom_minimum_size = Vector2(slot - 2.0 if _tier == 0 else 46.0, slot)
 	for bar in _bars:
 		bar.custom_minimum_size.y = bar_h if bar != _cast_bar else maxf(bar_h - 4.0, 10.0)
@@ -656,16 +702,16 @@ func _apply_layout() -> void:
 	if _items != null:
 		for s in _items.find_children("Slot*", "Panel", true, false):
 			(s as Control).custom_minimum_size = Vector2(item_slot, item_slot)
-	_header_sub.visible = vs.x >= 800.0
 	_place_panels()
 	_overlay.set("bar_width", 46.0 if _tier < 2 else 56.0)
 
 
 func _process(_delta: float) -> void:
+	_refresh_global()
 	_refresh()
 	# Re-place panels whenever the viewport or any panel's minimum size changes
 	# (covers the first frames, before containers have settled).
-	var sig := [get_viewport().get_visible_rect().size, _header.get_combined_minimum_size(),
+	var sig := [get_viewport().get_visible_rect().size, _global_panel.get_combined_minimum_size(),
 		_left_panel.get_combined_minimum_size(), _bottom.get_combined_minimum_size(),
 		_items != null and _items.visible]
 	if sig != _layout_sig:
@@ -1014,3 +1060,141 @@ func _on_melter_pressed() -> void:
 
 func _on_stop_pressed() -> void:
 	stop_requested.emit()
+
+
+# ------------------------------------------------------------ global spell bar
+
+func _on_global_pressed() -> void:
+	global_spell_requested.emit()
+	_global_btn.set_pressed_no_signal(_targeting == "global")
+
+
+func _set_mana_fill(f: float) -> void:
+	if _global_mana_mat != null:
+		_global_mana_mat.set_shader_parameter("fill", f)
+
+
+func _format_int(n: int) -> String:
+	var s := str(absi(n))
+	var out := ""
+	var count := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		count += 1
+		if count % 3 == 0 and i > 0:
+			out = "," + out
+	return "-" + out if n < 0 else out
+
+
+## Sync the global spell slot, mana pool and money readout to the GameState
+## autoload. Called every frame (cheap) so dev toggles and cast cooldowns stay live.
+func _refresh_global() -> void:
+	if _global_btn == null:
+		return
+	var gs := _state_node()
+	if gs == null:
+		_global_btn.apply_state(false, false, 0.0, 0.0)
+		_global_spell_label.text = "No global spell"
+		_set_mana_fill(0.0)
+		_global_mana_label.text = "Mana 0 / 1,000"
+		_money_label.text = "Money 0"
+		return
+	var spell: Resource = gs.current_global_spell()
+	if spell == null:
+		_global_btn.apply_state(false, false, 0.0, 0.0)
+		_global_spell_label.text = "No global spell"
+	else:
+		_global_btn.apply_state(true, bool(gs.can_cast_global()), float(gs.global_cooldown_remaining), float(spell.get("cooldown")))
+		_global_spell_label.text = "%s  (%s)" % [str(spell.get("display_name")), str(spell.get("key"))]
+	var mx := maxf(float(gs.max_mana), 1.0)
+	_set_mana_fill(clampf(float(gs.mana) / mx, 0.0, 1.0))
+	_global_mana_label.text = "Mana %s / %s" % [
+		"∞" if gs.infinite_mana else _format_int(int(roundf(gs.mana))),
+		_format_int(int(mx))]
+	_money_label.text = "Money %s" % ("∞" if gs.infinite_money else _format_int(int(gs.money)))
+
+
+func _on_faction_changed(_faction: Resource) -> void:
+	_update_ally_spawn()
+	_refresh_global()
+
+
+## Refresh the team-0 spawn button against the selected faction's unit_scene.
+func _update_ally_spawn() -> void:
+	if _ally_spawn_btn == null:
+		return
+	var gs := _state_node()
+	if gs == null or gs.faction == null:
+		_ally_spawn_btn.disabled = true
+		_ally_spawn_name.text = "No allied unit"
+		_ally_spawn_btn.tooltip_text = "No faction selected"
+		return
+	var faction: Resource = gs.faction
+	var scene: PackedScene = faction.get("unit_scene")
+	if scene == null:
+		_ally_spawn_btn.disabled = true
+		_ally_spawn_name.text = "No allied unit"
+		_ally_spawn_btn.tooltip_text = "No allied unit for %s yet" % str(faction.get("display_name"))
+		return
+	_ally_spawn_btn.disabled = false
+	var n := str(faction.get("unit_display_name"))
+	if n == "":
+		n = "Allied unit"
+	_ally_spawn_name.text = n
+	_ally_spawn_btn.tooltip_text = "Spawn friendly %s" % n
+
+
+# ------------------------------------------------------------------ tooltips
+
+func _show_bolt_tooltip() -> void:
+	var lead = _lead_unit()
+	if lead == null:
+		return
+	var ab = lead.get("bolt")
+	if ab != null:
+		_tooltip.show_ability(ab, GLYPH_BOLT, " (RMB on enemy)")
+		_position_tooltip(_bolt_btn)
+
+
+func _show_melter_tooltip() -> void:
+	var lead = _lead_unit()
+	if lead == null:
+		return
+	var ab = lead.get("melter")
+	if ab != null:
+		_tooltip.show_ability(ab, GLYPH_MELTER, " (Q, ground target)")
+		_position_tooltip(_melter_btn)
+
+
+func _show_global_tooltip() -> void:
+	var gs := _state_node()
+	if gs == null:
+		return
+	var spell: Resource = gs.current_global_spell()
+	if spell == null:
+		return
+	_tooltip.show_global(spell, GLYPH_MANA)
+	_position_tooltip(_global_btn)
+
+
+func _hide_tooltip() -> void:
+	if _tooltip != null:
+		_tooltip.visible = false
+
+
+func _position_tooltip(around: Control) -> void:
+	if _tooltip == null:
+		return
+	_tooltip.reset_size()
+	var ts := _tooltip.get_combined_minimum_size()
+	var r := around.get_global_rect()
+	var vs := get_viewport().get_visible_rect().size
+	var gap := 8.0
+	var pos := Vector2(r.end.x + gap, r.position.y + (r.size.y - ts.y) * 0.5)
+	if pos.x + ts.x > vs.x - 6.0:
+		pos.x = r.position.x - gap - ts.x
+	pos.x = clampf(pos.x, 6.0, maxf(vs.x - ts.x - 6.0, 6.0))
+	pos.y = clampf(pos.y, 6.0, maxf(vs.y - ts.y - 6.0, 6.0))
+	_tooltip.position = pos
+	_tooltip.size = ts
+	_tooltip.visible = true

@@ -25,7 +25,7 @@ func _init() -> void:
 		var screen := Rect2(Vector2.ZERO, vs)
 		var rects := {}
 		var nodes := {
-			"header": hud._header, "left": hud._left_panel, "right": hud._right_panel,
+			"left": hud._left_panel, "right": hud._right_panel,
 			"hero": hud._bottom, "items": hud.get_item_slots(), "minimap": hud.get_minimap()}
 		for n in nodes:
 			var r: Rect2 = (nodes[n] as Control).get_global_rect()
@@ -41,12 +41,17 @@ func _init() -> void:
 		_check(absf(hero.end.y - (vs.y - 8.0)) < 2.0, "hero at bottom edge")
 		_check(hero.size.y <= 175.0, "hero height %s" % hero.size.y)
 		_check(not hero.intersects(rects["items"]) and not hero.intersects(mini) and not rects["items"].intersects(mini), "hero/items/minimap disjoint at %s" % size)
-		for n in ["header", "left", "right"]:
+		for n in ["left", "right"]:
 			for o in ["hero", "items", "minimap"]:
 				_check(not rects[n].intersects(rects[o]), "%s overlaps %s at %s" % [n, o, size])
-		_check(not rects["header"].intersects(rects["left"]), "header/left")
+		_check(not rects["left"].intersects(rects["right"]), "left/right")
 		_check(rects["left"].position.x == 8.0, "left x")
 		_check(absf(rects["right"].end.x - (vs.x - 8.0)) < 2.0, "right x")
+		# Faction global-spell bar sits top-centre, clear of every bottom component.
+		var gb: Rect2 = hud._global_panel.get_global_rect()
+		_check(screen.encloses(gb), "global bar inside %s: %s" % [size, gb])
+		for o in ["hero", "items", "minimap", "left", "right"]:
+			_check(not gb.intersects(rects[o]), "global bar overlaps %s at %s" % [o, size])
 
 		# Hero internals: portrait | stats | abilities above bars; Stop outside slots.
 		var portrait: Rect2 = hud._portrait_rects[2].get_global_rect()
@@ -91,12 +96,10 @@ func _init() -> void:
 		var again: Rect2 = hud.get_item_slots().get_global_rect()
 		_check(again.size.x > 0.0 and not again.intersects(hud._bottom.get_global_rect()), "items reflow after restore")
 
-		hud.show_message("A very long message that should wrap rather than extend beyond the viewport width. ".repeat(4))
+		hud.play_deny()
 		for i in 3:
 			await process_frame
-		var t: Rect2 = hud._toast_panel.get_global_rect()
-		_check(screen.encloses(t), "toast inside %s: %s" % [size, t])
-		print(size, " hero=", hero, " items=", rects["items"], " minimap=", mini, " toast=", t)
+		print(size, " hero=", hero, " items=", rects["items"], " minimap=", mini)
 
 	# ---- behaviour
 	var unit_scene = load("res://units/hawkRider/hawk_rider_unit.tscn")

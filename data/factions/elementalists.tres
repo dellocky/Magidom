@@ -1,0 +1,13 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://scripts/rts/faction.gd" id="1"]
+[ext_resource type="PackedScene" path="res://units/hawkRider/hawk_rider_unit.tscn" id="2"]
+
+[resource]
+script = ExtResource("1")
+id = &"elementalists"
+display_name = "EleMentalists"
+color = Color(0.38, 0.82, 1, 1)
+description = "Storm riders who hurl lightning from the back of a hawk."
+unit_scene = ExtResource("2")
+unit_display_name = "Hawk Rider"

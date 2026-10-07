@@ -38,6 +38,10 @@ var state: State = State.IDLE
 var cast_elapsed: float = 0.0
 var bolt_cooldown_remaining: float = 0.0
 var melter_cooldown_remaining: float = 0.0
+## Frenzy (global spell) state: time left, move multiplier and health-burn fraction.
+var frenzy_remaining: float = 0.0
+var frenzy_move_bonus: float = 0.0
+var frenzy_drain_fraction: float = 0.0
 var destination := Vector3.ZERO
 var attack_target: Node3D
 var channel_point := Vector3.ZERO
@@ -224,9 +228,20 @@ func get_move_slow_fraction() -> float:
 	return clampf(slow, 0.0, 0.95)
 
 
-## Units per second, including slows. Movement and the HUD both use this.
+## Units per second, including slows and the frenzy move bonus. Movement and the
+## HUD both use this.
 func get_effective_move_speed() -> float:
-	return stats.move_speed * (1.0 - get_move_slow_fraction())
+	return stats.move_speed * (1.0 - get_move_slow_fraction()) * (1.0 + frenzy_move_bonus)
+
+
+## Apply (or refresh) the frenzy global-spell buff: +move bonus while burning a
+## fraction of max health every second, for `duration` seconds.
+func apply_frenzy(move_bonus: float, drain_fraction: float, duration: float) -> void:
+	if not is_alive():
+		return
+	frenzy_move_bonus = move_bonus
+	frenzy_drain_fraction = maxf(drain_fraction, 0.0)
+	frenzy_remaining = maxf(frenzy_remaining, duration)
 
 
 func set_aoe_modifier(source: Variant, multiplier: float) -> bool:
@@ -317,15 +332,29 @@ func receive_damage(source: Node3D, amount: float, damage_type: StringName, flag
 	last_damage = {"amount": applied, "type": damage_type, "flags": flags.duplicate()}
 	damaged.emit(applied, damage_type, flags)
 	if health <= 0.0:
-		_set_state(State.DEAD)
-		remove_from_group("rts_units")
-		selected = false
-		$PickBody/CollisionShape3D.set_deferred("disabled", true)
-		died.emit(self)
-		var tween := create_tween()
-		tween.tween_property(self, "scale", Vector3.ONE * 0.01, 0.45)
-		tween.tween_callback(queue_free)
+		_die()
 	return applied
+
+
+func _die() -> void:
+	_set_state(State.DEAD)
+	remove_from_group("rts_units")
+	selected = false
+	$PickBody/CollisionShape3D.set_deferred("disabled", true)
+	died.emit(self)
+	var tween := create_tween()
+	tween.tween_property(self, "scale", Vector3.ONE * 0.01, 0.45)
+	tween.tween_callback(queue_free)
+
+
+## Health burn for the frenzy buff. Self-inflicted, so it bypasses the same-team
+## guard in receive_damage.
+func _drain_health(amount: float) -> void:
+	if not is_alive() or amount <= 0.0:
+		return
+	health = maxf(0.0, health - amount)
+	if health <= 0.0:
+		_die()
 
 
 func _physics_process(delta: float) -> void:
@@ -337,6 +366,13 @@ func advance_simulation(delta: float) -> void:
 		return
 	bolt_cooldown_remaining = maxf(0.0, bolt_cooldown_remaining - delta)
 	melter_cooldown_remaining = maxf(0.0, melter_cooldown_remaining - delta)
+	if frenzy_remaining > 0.0:
+		frenzy_remaining = maxf(0.0, frenzy_remaining - delta)
+		if frenzy_drain_fraction > 0.0:
+			_drain_health(stats.max_health * frenzy_drain_fraction * delta)
+		if frenzy_remaining <= 0.0:
+			frenzy_move_bonus = 0.0
+			frenzy_drain_fraction = 0.0
 	match state:
 		State.MOVING:
 			if _move_toward(destination, delta):
