@@ -1,8 +1,13 @@
 extends CanvasLayer
-## Test arena HUD: spawn panels with a shared Hawk Rider portrait, header with
-## menu button, bottom selection/spell panel, projected unit bars and marquee.
-## Built entirely in code; every real panel is MOUSE_FILTER_STOP while the
-## full-screen root/overlay ignore the mouse (no click-through blocker).
+## Test arena HUD. Static scene nodes (test_level_hud.tscn): Root, SelectionOverlay,
+## HeroPanel, ItemSlots (instance of item_slots.tscn) and Minimap (placeholder
+## Control a minimap script can be attached to). Panel contents, spawn panes,
+## header and toast are built at runtime. Real panels are MOUSE_FILTER_STOP and
+## registered in pointer_over_ui(); the full-screen root/overlay ignore the mouse.
+##
+## Bottom strip: portrait | damage/armor/move stats (hover/focus popup) |
+## [Bolt][Melter][empty][empty] + Stop, health, mana, cast bar.  Items and the
+## minimap are independent components.
 
 signal spawn_requested(team: int)
 signal melter_requested()
@@ -12,22 +17,44 @@ signal menu_requested()
 
 const THEME_PATH := "res://ui/main_menu_theme.tres"
 const OVERLAY_SCRIPT := "res://ui/selection_overlay.gd"
+const ITEM_SLOTS_SCENE := "res://ui/item_slots.tscn"
 const HAWK_SCENE := "res://units/hawkRider/hawk_rider.tscn"
+const SLOT_SCRIPT := preload("res://ui/ability_slot.gd")
+const GLYPH_SCRIPT := preload("res://ui/hud_glyph.gd")
 
 const FRIENDLY := Color(0.38, 0.82, 1.0)
 const ENEMY := Color(1.0, 0.47, 0.40)
-const MANA := Color(0.50, 0.44, 1.0)
+const HEALTH := Color(0.27, 0.80, 0.36)
+const MANA := Color(0.28, 0.52, 1.0)
 const PANEL_BG := Color(0.02, 0.05, 0.10, 0.90)
 const PANEL_EDGE := Color(0.15, 0.29, 0.43, 0.95)
 const TEXT := Color(0.80, 0.87, 0.94)
 const TEXT_DIM := Color(0.55, 0.66, 0.78)
+const GLYPH_DAMAGE := Color(1.0, 0.62, 0.35)
+const GLYPH_ARMOR := Color(0.62, 0.78, 1.0)
+const GLYPH_MOVE := Color(0.55, 0.92, 0.55)
+const GLYPH_BOLT := Color(1.0, 0.92, 0.45)
+const GLYPH_MELTER := Color(0.78, 0.55, 1.0)
 
 const STATE_NAMES := ["Idle", "Moving", "Chasing", "Lightning Bolt", "Base Melter", "Dead"]
 const STATE_BOLT := 3
 const STATE_CHANNEL := 4
+const MARGIN := 8.0
+
+## Editor/runtime toggle for the six-slot item component. The ItemSlots node's own
+## `visible` is respected: layout never forces it visible, only this toggle does.
+@export var show_items: bool = true:
+	set = set_show_items
+
+## Vision service (Node with can_see_unit / can_see_point / controls / player_team).
+## Assigning it (or calling set_vision_system) forwards it to the overlay and minimap.
+var vision_system: Node = null:
+	set = set_vision_system
 
 var _root: Control
 var _overlay: Control
+var _items: Control
+var _minimap: Control
 var _selected: Array = []
 var _targeting := ""
 var _blockers: Array[Control] = []
@@ -35,7 +62,7 @@ var _blockers: Array[Control] = []
 var _header: PanelContainer
 var _left_panel: PanelContainer
 var _right_panel: PanelContainer
-var _bottom: PanelContainer
+var _bottom: PanelContainer  # HeroPanel
 var _toast_panel: PanelContainer
 var _toast_label: Label
 var _toast_tween: Tween
@@ -50,21 +77,35 @@ var _hp_bar: ProgressBar
 var _hp_label: Label
 var _mana_bar: ProgressBar
 var _mana_label: Label
-var _stats_label: Label
 var _cast_bar: ProgressBar
 var _cast_label: Label
-var _hint: Label
+var _lead_label: Label
+var _stats_panel: PanelContainer
+var _stat_values := {}
+var _stat_glyphs: Array[Control] = []
+var _stats_popup: PanelContainer
+var _stats_popup_label: Label
+var _stats_hover := false
+var _stats_focus := false
 var _bolt_btn: Button
 var _melter_btn: Button
+var _empty_slots: Array[Button] = []
+var _slot_row: HBoxContainer
 var _stop_btn: Button
+var _bars: Array[ProgressBar] = []
 var _header_title: Label
 var _header_sub: Label
 var _layout_sig: Array = []
+var _tier := 2
 
 
 func _ready() -> void:
 	layer = 10
+	_collect_scene_nodes()
 	_build()
+	if not show_items and _items != null:
+		_items.visible = false
+	_propagate_vision()
 	_apply_layout()
 	get_viewport().size_changed.connect(_apply_layout_deferred)
 	_apply_layout_deferred()
@@ -77,6 +118,20 @@ func _ready() -> void:
 func set_selection(units: Array) -> void:
 	_selected = units.duplicate()
 	_refresh()
+
+
+func set_show_items(value: bool) -> void:
+	show_items = value
+	if _items != null and is_node_ready():
+		_items.visible = value
+		_apply_layout()
+
+
+## Forward the vision service to the selection overlay and minimap (whichever expose
+## a `vision_system` property) and filter selection display by player sight.
+func set_vision_system(service: Node) -> void:
+	vision_system = service
+	_propagate_vision()
 
 
 func show_message(text: String) -> void:
@@ -117,38 +172,91 @@ func pointer_over_ui(point: Vector2) -> bool:
 	return false
 
 
+## Scene-node accessors for the parent level.
+func get_minimap() -> Control:
+	return _minimap
+
+
+func get_item_slots() -> Control:
+	return _items
+
+
+func get_overlay() -> Control:
+	return _overlay
+
+
+func _propagate_vision() -> void:
+	for c in [_overlay, _minimap]:
+		if c != null and _has_property(c, "vision_system"):
+			c.set("vision_system", vision_system)
+
+
+func _has_property(obj: Object, prop: String) -> bool:
+	for p in obj.get_property_list():
+		if p["name"] == prop:
+			return true
+	return false
+
+
 # -------------------------------------------------------------------- build
 
-func _build() -> void:
-	_root = Control.new()
-	_root.name = "Root"
-	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	if ResourceLoader.exists(THEME_PATH):
+func _collect_scene_nodes() -> void:
+	_root = get_node_or_null("Root") as Control
+	if _root == null:
+		_root = Control.new()
+		_root.name = "Root"
+		_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		add_child(_root)
+	if _root.theme == null and ResourceLoader.exists(THEME_PATH):
 		_root.theme = load(THEME_PATH)
-	add_child(_root)
+	_overlay = _root.get_node_or_null("SelectionOverlay") as Control
+	if _overlay == null:
+		_overlay = Control.new()
+		_overlay.name = "SelectionOverlay"
+		if ResourceLoader.exists(OVERLAY_SCRIPT):
+			_overlay.set_script(load(OVERLAY_SCRIPT))
+		_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_root.add_child(_overlay)
+	_bottom = _root.get_node_or_null("HeroPanel") as PanelContainer
+	if _bottom == null:
+		_bottom = PanelContainer.new()
+		_bottom.name = "HeroPanel"
+		_root.add_child(_bottom)
+	_items = _root.get_node_or_null("ItemSlots") as Control
+	if _items == null and ResourceLoader.exists(ITEM_SLOTS_SCENE):
+		_items = (load(ITEM_SLOTS_SCENE) as PackedScene).instantiate() as Control
+		_items.name = "ItemSlots"
+		_root.add_child(_items)
+	_minimap = _root.get_node_or_null("Minimap") as Control
+	if _minimap == null:
+		_minimap = Control.new()
+		_minimap.name = "Minimap"
+		_minimap.custom_minimum_size = Vector2(176, 176)
+		_minimap.mouse_filter = Control.MOUSE_FILTER_STOP
+		_root.add_child(_minimap)
 
-	_overlay = Control.new()
-	_overlay.name = "SelectionOverlay"
-	if ResourceLoader.exists(OVERLAY_SCRIPT):
-		_overlay.set_script(load(OVERLAY_SCRIPT))
-	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_root.add_child(_overlay)
 
+func _build() -> void:
+	_style_panel(_bottom, FRIENDLY)
+	if _items != null:
+		_items.mouse_filter = Control.MOUSE_FILTER_STOP
+		_blockers.append(_items)
+	_minimap.mouse_filter = Control.MOUSE_FILTER_STOP
+	_blockers.append(_minimap)
 	_build_header()
 	_build_spawn_panel(0)
 	_build_spawn_panel(1)
-	_build_bottom()
+	_build_hero()
+	_build_stats_popup()
 	_build_toast()
 
 
-func _panel(accent: Color) -> PanelContainer:
-	var p := PanelContainer.new()
+func _style_panel(p: Control, accent: Color) -> void:
 	p.mouse_filter = Control.MOUSE_FILTER_STOP
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = PANEL_BG
-	sb.border_color = PANEL_EDGE
 	sb.set_border_width_all(1)
 	sb.border_width_top = 2
 	sb.border_color = accent
@@ -156,8 +264,14 @@ func _panel(accent: Color) -> PanelContainer:
 	sb.shadow_size = 6
 	sb.set_content_margin_all(6)
 	p.add_theme_stylebox_override("panel", sb)
+	if not _blockers.has(p):
+		_blockers.append(p)
+
+
+func _panel(accent: Color) -> PanelContainer:
+	var p := PanelContainer.new()
 	_root.add_child(p)
-	_blockers.append(p)
+	_style_panel(p, accent)
 	return p
 
 
@@ -201,7 +315,7 @@ func _build_header() -> void:
 	_header_title = _label("TEST ARENA", 15, FRIENDLY)
 	_header_title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(_header_title)
-	_header_sub = _label("Hawk Rider sandbox", 12, TEXT_DIM)
+	_header_sub = _label("LMB select   RMB move / attack   Q Melter   S Stop", 11, TEXT_DIM)
 	_header_sub.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(_header_sub)
 	var menu := Button.new()
@@ -259,96 +373,178 @@ func _meter(color: Color) -> Array:
 	bar.value = 0.0
 	bar.custom_minimum_size = Vector2(60, 15)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_theme_stylebox_override("background", _box(Color(0.04, 0.08, 0.14, 0.95), Color(0.12, 0.2, 0.3), 1))
-	var fill := _box(color.darkened(0.15), color.lightened(0.1), 0)
+	var fill := _box(color.darkened(0.2), color.lightened(0.1), 0)
 	bar.add_theme_stylebox_override("fill", fill)
-	var l := _label("", 11, Color(0.95, 0.98, 1.0))
+	var l := _label("", 11, Color(1, 1, 1))
 	l.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	l.add_theme_color_override("font_outline_color", Color(0.0, 0.02, 0.05, 0.9))
-	l.add_theme_constant_override("outline_size", 3)
+	l.add_theme_color_override("font_outline_color", Color(0.0, 0.02, 0.05, 0.95))
+	l.add_theme_constant_override("outline_size", 4)
+	l.clip_text = true
 	bar.add_child(l)
+	_bars.append(bar)
 	return [bar, l]
 
 
-func _spell_button(text: String, accent: Color, cb: Callable, toggle: bool) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.toggle_mode = toggle
-	b.custom_minimum_size = Vector2(104, 50)
-	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	b.clip_text = true
-	b.add_theme_font_size_override("font_size", 13)
+func _ability_slot(kind: String, key: String, accent: Color, cb: Callable) -> Button:
+	var b: Button = SLOT_SCRIPT.new()
+	b.setup(kind, key, accent)
+	b.toggle_mode = true
+	b.custom_minimum_size = Vector2(48, 48)
 	_style_button(b, accent)
 	b.pressed.connect(cb)
 	return b
 
 
-func _build_bottom() -> void:
-	_bottom = _panel(FRIENDLY)
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 4)
-	margin.add_theme_constant_override("margin_right", 4)
-	margin.add_theme_constant_override("margin_top", 2)
-	margin.add_theme_constant_override("margin_bottom", 2)
-	_bottom.add_child(margin)
+func _build_hero() -> void:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	margin.add_child(row)
+	row.name = "HeroRow"
+	row.add_theme_constant_override("separation", 10)
+	_bottom.add_child(row)
 
-	# Left: info + stats
-	var info := VBoxContainer.new()
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_theme_constant_override("separation", 3)
-	row.add_child(info)
-	_title = _label("Nothing selected", 17, TEXT)
+	# Portrait
+	var frame := PanelContainer.new()
+	frame.name = "PortraitFrame"
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var fsb := _box(Color(0.03, 0.07, 0.12, 0.95), PANEL_EDGE.lightened(0.15))
+	fsb.set_content_margin_all(2)
+	frame.add_theme_stylebox_override("panel", fsb)
+	var tr := TextureRect.new()
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.custom_minimum_size = Vector2(104, 104)
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(tr)
+	_portrait_rects.append(tr)
+	row.add_child(frame)
+
+	# Stats (damage / armor / effective move speed)
+	var sc := VBoxContainer.new()
+	sc.add_theme_constant_override("separation", 2)
+	row.add_child(sc)
+	_lead_label = _label("Stats", 10, TEXT_DIM)
+	_lead_label.clip_text = true
+	sc.add_child(_lead_label)
+	_stats_panel = PanelContainer.new()
+	_stats_panel.name = "StatsPanel"
+	_stats_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_stats_panel.focus_mode = Control.FOCUS_ALL
+	_stats_panel.add_theme_stylebox_override("panel", _box(Color(0.03, 0.07, 0.12, 0.95), PANEL_EDGE))
+	_stats_panel.mouse_entered.connect(func() -> void: _set_stats_hover(true))
+	_stats_panel.mouse_exited.connect(_on_stats_mouse_exited)
+	_stats_panel.focus_entered.connect(func() -> void: _stats_focus = true)
+	_stats_panel.focus_exited.connect(func() -> void: _stats_focus = false)
+	var rows := VBoxContainer.new()
+	rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rows.add_theme_constant_override("separation", 4)
+	_stats_panel.add_child(rows)
+	_stat_row(rows, "damage", GLYPH_DAMAGE)
+	_stat_row(rows, "armor", GLYPH_ARMOR)
+	_stat_row(rows, "move", GLYPH_MOVE)
+	sc.add_child(_stats_panel)
+
+	# Abilities above health / mana
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 3)
+	row.add_child(col)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	col.add_child(head)
+	_title = _label("Nothing selected", 15, TEXT)
 	_title.clip_text = true
-	info.add_child(_title)
-	_subtitle = _label("", 12, TEXT_DIM)
+	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(_title)
+	_subtitle = _label("", 11, TEXT_DIM)
 	_subtitle.clip_text = true
-	info.add_child(_subtitle)
-	var hp := _meter(FRIENDLY)
+	head.add_child(_subtitle)
+
+	_slot_row = HBoxContainer.new()
+	_slot_row.name = "AbilityRow"
+	_slot_row.add_theme_constant_override("separation", 4)
+	col.add_child(_slot_row)
+	_bolt_btn = _ability_slot("bolt", "RMB", GLYPH_BOLT, _on_bolt_pressed)
+	_melter_btn = _ability_slot("melter", "Q", GLYPH_MELTER, _on_melter_pressed)
+	_bolt_btn.name = "BoltSlot"
+	_melter_btn.name = "MelterSlot"
+	_bolt_btn.tooltip_text = "Lightning Bolt: right-click an enemy unit"
+	_melter_btn.tooltip_text = "Base Melter: choose a ground target (Q)"
+	_slot_row.add_child(_bolt_btn)
+	_slot_row.add_child(_melter_btn)
+	for i in 2:
+		var e: Button = SLOT_SCRIPT.new()
+		e.setup("empty", "", TEXT_DIM, true)
+		e.name = "EmptySlot%d" % (i + 1)
+		e.custom_minimum_size = Vector2(48, 48)
+		e.tooltip_text = "Empty ability slot"
+		_style_button(e, TEXT_DIM)
+		_slot_row.add_child(e)
+		_empty_slots.append(e)
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(6, 0)
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_slot_row.add_child(gap)
+	_stop_btn = Button.new()
+	_stop_btn.name = "StopButton"
+	_stop_btn.text = "Stop\nS"
+	_stop_btn.clip_text = true
+	_stop_btn.custom_minimum_size = Vector2(46, 48)
+	_stop_btn.add_theme_font_size_override("font_size", 11)
+	_stop_btn.tooltip_text = "Stop movement and Base Melter (S)"
+	_style_button(_stop_btn, ENEMY)
+	_stop_btn.pressed.connect(_on_stop_pressed)
+	_slot_row.add_child(_stop_btn)
+
+	var hp := _meter(HEALTH)
 	_hp_bar = hp[0]
 	_hp_label = hp[1]
-	info.add_child(_hp_bar)
+	col.add_child(_hp_bar)
 	var mn := _meter(MANA)
 	_mana_bar = mn[0]
 	_mana_label = mn[1]
-	info.add_child(_mana_bar)
-	_stats_label = _label("", 12, TEXT)
-	_stats_label.clip_text = true
-	info.add_child(_stats_label)
-
-	row.add_child(VSeparator.new())
-
-	# Right: spells
-	var spells := VBoxContainer.new()
-	spells.custom_minimum_size.x = 330
-	spells.add_theme_constant_override("separation", 4)
-	row.add_child(spells)
-	var buttons := HBoxContainer.new()
-	buttons.add_theme_constant_override("separation", 6)
-	spells.add_child(buttons)
-	_bolt_btn = _spell_button("Lightning Bolt\nRMB", FRIENDLY, _on_bolt_pressed, true)
-	_melter_btn = _spell_button("Base Melter\nQ", FRIENDLY, _on_melter_pressed, true)
-	_stop_btn = _spell_button("Stop\nS", ENEMY, _on_stop_pressed, false)
-	_bolt_btn.tooltip_text = "Lightning Bolt: right-click an enemy unit"
-	_melter_btn.tooltip_text = "Base Melter: choose a ground target (Q)"
-	_stop_btn.tooltip_text = "Stop movement and Base Melter (S)"
-	buttons.add_child(_bolt_btn)
-	buttons.add_child(_melter_btn)
-	buttons.add_child(_stop_btn)
+	col.add_child(_mana_bar)
 	var cast := _meter(Color(0.95, 0.8, 0.35))
 	_cast_bar = cast[0]
 	_cast_label = cast[1]
-	spells.add_child(_cast_bar)
-	_hint = _label("LMB select / drag   RMB move or attack   Q Melter   S Stop", 10, TEXT_DIM)
-	_hint.clip_text = true
-	spells.add_child(_hint)
-	var cam_hint := _label("Camera: arrows / MMB pan   wheel zoom   F focus", 10, TEXT_DIM)
-	cam_hint.clip_text = true
-	spells.add_child(cam_hint)
+	_cast_bar.custom_minimum_size.y = 12
+	_cast_label.add_theme_font_size_override("font_size", 10)
+	col.add_child(_cast_bar)
+
+
+func _stat_row(parent: Control, key: String, color: Color) -> void:
+	var h := HBoxContainer.new()
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_theme_constant_override("separation", 6)
+	var g: Control = GLYPH_SCRIPT.new()
+	g.kind = key
+	g.color = color
+	g.custom_minimum_size = Vector2(20, 20)
+	h.add_child(g)
+	_stat_glyphs.append(g)
+	var v := _label("-", 15, Color(1, 1, 1))
+	v.custom_minimum_size.x = 36
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(v)
+	parent.add_child(h)
+	_stat_values[key] = v
+
+
+func _build_stats_popup() -> void:
+	_stats_popup = PanelContainer.new()
+	_stats_popup.name = "StatsPopup"
+	_stats_popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := _box(Color(0.02, 0.05, 0.10, 0.97), FRIENDLY.darkened(0.2))
+	sb.set_content_margin_all(8)
+	_stats_popup.add_theme_stylebox_override("panel", sb)
+	_stats_popup_label = _label("", 12, TEXT)
+	_stats_popup.add_child(_stats_popup_label)
+	_stats_popup.visible = false
+	_root.add_child(_stats_popup)
+	_blockers.append(_stats_popup)
 
 
 func _build_toast() -> void:
@@ -386,10 +582,18 @@ func _place_panel(p: Control, x: float, y: float, width: float = -1.0) -> void:
 	p.size = Vector2(w, min_size.y)
 
 
+func _minimap_side(vs: Vector2) -> float:
+	var side := 128.0 if _tier == 0 else clampf(vs.y * 0.27, 160.0, 190.0)
+	return maxf(side, _minimap.custom_minimum_size.x)
+
+
 func _place_panels() -> void:
 	var vs := get_viewport().get_visible_rect().size
-	var m := 8.0
-	for p in [_header, _left_panel, _right_panel, _bottom]:
+	var m := MARGIN
+	var panels: Array = [_header, _left_panel, _right_panel, _bottom]
+	if _items != null:
+		panels.append(_items)
+	for p in panels:
 		(p as Control).reset_size()
 	var hs := _header.get_combined_minimum_size()
 	_place_panel(_header, (vs.x - hs.x) * 0.5, m)
@@ -397,10 +601,27 @@ func _place_panels() -> void:
 	_place_panel(_left_panel, m, (vs.y - ls.y) * 0.5)
 	var rs := _right_panel.get_combined_minimum_size()
 	_place_panel(_right_panel, vs.x - rs.x - m, (vs.y - rs.y) * 0.5)
-	var bw := minf(vs.x - 2.0 * m, 880.0)
-	var bh := _bottom.get_combined_minimum_size().y
-	_place_panel(_bottom, (vs.x - bw) * 0.5, vs.y - bh - m, bw)
+
+	# Minimap reserves the bottom-right corner independently of the hero strip.
+	var side := _minimap_side(vs)
+	_minimap.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_minimap.position = Vector2(vs.x - side - m, vs.y - side - m)
+	_minimap.size = Vector2(side, side)
+
+	# Hero panel (+ items when shown) centred, but kept left of the minimap.
+	var bs := _bottom.get_combined_minimum_size()
+	var show_it := _items != null and _items.visible
+	var isz := _items.get_combined_minimum_size() if show_it else Vector2.ZERO
+	var gap := 8.0 if show_it else 0.0
+	var total := bs.x + gap + isz.x
+	var x0 := (vs.x - total) * 0.5
+	x0 = minf(x0, vs.x - side - 2.0 * m - total)
+	x0 = maxf(x0, m)
+	_place_panel(_bottom, x0, vs.y - bs.y - m)
+	if show_it:
+		_place_panel(_items, x0 + bs.x + gap, vs.y - isz.y - m)
 	_place_toast()
+	_update_stats_popup()
 
 
 func _place_toast() -> void:
@@ -410,19 +631,137 @@ func _place_toast() -> void:
 	_toast_panel.reset_size()
 	_place_panel(_toast_panel, (vs.x - w) * 0.5, 52.0, w)
 
+
 func _apply_layout() -> void:
-	if _root == null:
+	if _root == null or _bottom == null or _hp_bar == null:
 		return
 	var vs := get_viewport().get_visible_rect().size
-	var compact := vs.y < 680.0 or vs.x < 900.0
-	var portrait := 60 if compact else 76
+	_tier = 0 if (vs.x < 720.0 or vs.y < 520.0) else (1 if (vs.x < 1000.0 or vs.y < 600.0) else 2)
+	var portrait: float = [64.0, 84.0, 104.0][_tier]
+	var slot: float = [34.0, 42.0, 48.0][_tier]
+	var item_slot: float = [24.0, 34.0, 40.0][_tier]
+	var bar_h: float = [12.0, 14.0, 16.0][_tier]
+	var spawn_portrait := 60 if _tier < 2 else 76
 	for tr in _portrait_rects:
-		tr.custom_minimum_size = Vector2(portrait, portrait)
+		tr.custom_minimum_size = Vector2(spawn_portrait, spawn_portrait)
+	(_bottom.find_child("PortraitFrame", true, false).get_child(0) as Control).custom_minimum_size = Vector2(portrait, portrait)
 	for b in [_left_panel, _right_panel]:
-		(b.get_child(0) as Control).custom_minimum_size = Vector2(80 if compact else 88, portrait + 28)
-	_header_sub.visible = vs.x >= 640.0
+		(b.get_child(0) as Control).custom_minimum_size = Vector2(80 if _tier < 2 else 88, spawn_portrait + 28)
+	for b in [_bolt_btn, _melter_btn] + _empty_slots:
+		(b as Control).custom_minimum_size = Vector2(slot, slot)
+	_stop_btn.custom_minimum_size = Vector2(slot - 2.0 if _tier == 0 else 46.0, slot)
+	for bar in _bars:
+		bar.custom_minimum_size.y = bar_h if bar != _cast_bar else maxf(bar_h - 4.0, 10.0)
+	(_stat_values["damage"] as Control).custom_minimum_size.x = 30 if _tier == 0 else 36
+	if _items != null:
+		for s in _items.find_children("Slot*", "Panel", true, false):
+			(s as Control).custom_minimum_size = Vector2(item_slot, item_slot)
+	_header_sub.visible = vs.x >= 800.0
 	_place_panels()
-	_overlay.set("bar_width", 46.0 if compact else 56.0)
+	_overlay.set("bar_width", 46.0 if _tier < 2 else 56.0)
+
+
+func _process(_delta: float) -> void:
+	_refresh()
+	# Re-place panels whenever the viewport or any panel's minimum size changes
+	# (covers the first frames, before containers have settled).
+	var sig := [get_viewport().get_visible_rect().size, _header.get_combined_minimum_size(),
+		_left_panel.get_combined_minimum_size(), _bottom.get_combined_minimum_size(),
+		_items != null and _items.visible]
+	if sig != _layout_sig:
+		_layout_sig = sig
+		_apply_layout()
+
+
+# ------------------------------------------------------------- stats popup
+
+func _set_stats_hover(on: bool) -> void:
+	_stats_hover = on
+
+
+func _on_stats_mouse_exited() -> void:
+	_stats_hover = false
+	# A mouse click focuses the panel; drop that focus when the pointer leaves so
+	# the popup does not stay open. Keyboard focus (Tab) is unaffected.
+	if _stats_panel.has_focus():
+		_stats_panel.release_focus()
+
+
+func is_stats_popup_open() -> bool:
+	return _stats_popup != null and _stats_popup.visible
+
+
+func _update_stats_popup() -> void:
+	if _stats_popup == null:
+		return
+	var open := (_stats_hover or _stats_focus) and _stats_panel.is_visible_in_tree()
+	_stats_popup.visible = open
+	if not open:
+		return
+	_stats_popup_label.text = _stats_popup_text()
+	_stats_popup.reset_size()
+	var vs := get_viewport().get_visible_rect().size
+	var ps := _stats_popup.get_combined_minimum_size()
+	var anchor := _stats_panel.get_global_rect()
+	var pos := Vector2(anchor.position.x, anchor.position.y - ps.y - 6.0)
+	if pos.y < 4.0:
+		pos.y = minf(anchor.end.y + 6.0, vs.y - ps.y - 4.0)
+	pos.x = clampf(pos.x, 4.0, maxf(vs.x - ps.x - 4.0, 4.0))
+	pos.y = clampf(pos.y, 4.0, maxf(vs.y - ps.y - 4.0, 4.0))
+	_stats_popup.position = pos
+	_stats_popup.size = ps
+
+
+func _effective_move(unit: Object) -> float:
+	var st = unit.get("stats")
+	var base := float(st.get("move_speed")) if st != null else 0.0
+	if unit.has_method("get_effective_move_speed"):
+		return float(unit.call("get_effective_move_speed"))
+	return base
+
+
+func _stats_popup_text() -> String:
+	var lead = _lead_unit()
+	if lead == null:
+		return "No unit selected"
+	var st = lead.get("stats")
+	if st == null:
+		return "No stats available"
+	var lines: Array[String] = []
+	var n := _display_units().size()
+	lines.append("%s%s" % [str(st.get("display_name")), "  (lead of %d selected)" % n if n > 1 else ""])
+	lines.append("Damage: %s    Armor: %s" % [_num(st.get("attack_damage")), _num(st.get("armor"))])
+	var base := float(st.get("move_speed"))
+	var eff := _effective_move(lead)
+	var slow := 0.0 if base <= 0.0 else clampf(1.0 - eff / base, 0.0, 1.0)
+	lines.append("Move speed: %s base, %s effective" % [_num(base), _num(eff)])
+	lines.append("Slow: %d%%" % int(roundf(slow * 100.0)))
+	var vision = st.get("vision_range")
+	if vision != null:
+		lines.append("Vision: %s units (%.0f m)" % [_num(vision), float(vision) / 20.0])
+	else:
+		lines.append("Vision: n/a")
+	lines.append("Health max: %s    Mana max: %s" % [_num(st.get("max_health")), _num(st.get("max_mana"))])
+	var bolt = lead.get("bolt")
+	if bolt != null:
+		lines.append("Bolt: range %s, mana %s, cooldown %ss, damage %s" % [
+			_num(bolt.get("range_units")), _num(bolt.get("mana_cost")), _num(bolt.get("cooldown")), _num(bolt.get("damage"))])
+	else:
+		lines.append("Bolt: not installed")
+	var melter = lead.get("melter")
+	if melter != null:
+		var r0 := float(melter.get("radius_units"))
+		var r1 := r0
+		if melter.has_method("radius_at"):
+			r1 = float(melter.call("radius_at", float(melter.get("duration"))))
+		if lead.has_method("effective_melter_radius_units"):
+			r0 = float(lead.call("effective_melter_radius_units", 0.0))
+			r1 = float(lead.call("effective_melter_radius_units", float(melter.get("duration"))))
+		lines.append("Melter: range %s, mana %s, cooldown %ss, radius %s -> %s" % [
+			_num(melter.get("range_units")), _num(melter.get("mana_cost")), _num(melter.get("cooldown")), _num(r0), _num(r1)])
+	else:
+		lines.append("Melter: not installed")
+	return "\n".join(lines)
 
 
 # ---------------------------------------------------------------- portrait
@@ -503,17 +842,6 @@ func _start_portrait() -> void:
 
 # ---------------------------------------------------------------- runtime
 
-func _process(_delta: float) -> void:
-	_refresh()
-	# Re-place panels whenever the viewport or any panel's minimum size changes
-	# (covers the first frames, before containers have settled).
-	var sig := [get_viewport().get_visible_rect().size, _header.get_combined_minimum_size(),
-		_left_panel.get_combined_minimum_size(), _bottom.get_combined_minimum_size()]
-	if sig != _layout_sig:
-		_layout_sig = sig
-		_apply_layout()
-
-
 func _alive(u: Variant) -> bool:
 	if u == null or not is_instance_valid(u):
 		return false
@@ -522,50 +850,71 @@ func _alive(u: Variant) -> bool:
 	return true
 
 
+## Living selected units the player may currently see (fog-safe display set).
+func _display_units() -> Array:
+	var out: Array = []
+	for u in _selected:
+		if not _alive(u):
+			continue
+		if vision_system != null and is_instance_valid(vision_system) and vision_system.has_method("can_see_unit"):
+			var pt = vision_system.get("player_team")
+			if not bool(vision_system.call("can_see_unit", int(pt) if pt != null else 0, u)):
+				continue
+		out.append(u)
+	return out
+
+
+func _lead_unit() -> Variant:
+	var d := _display_units()
+	return d[0] if not d.is_empty() else null
+
+
 func _num(v: Variant) -> String:
 	return str(int(roundf(float(v))))
 
 
-func _refresh_spell_button(button: Button, units: Array, spell_key: String, spell_name: String, shortcut: String) -> void:
+func _refresh_slot(slot: Button, units: Array, key: String) -> void:
+	var installed := 0
 	var ready := false
 	var remaining := INF
+	var total := 0.0
 	for unit in units:
-		ready = ready or bool(unit.call("can_cast_" + spell_key))
-		remaining = minf(remaining, float(unit.get(spell_key + "_cooldown_remaining")))
-	button.disabled = not ready
-	var status := shortcut
-	if not units.is_empty():
-		if remaining > 0.0:
-			status = "%ds" % ceili(remaining)
-		elif not ready:
-			status = "Unavailable"
-	button.text = "%s\n%s" % [spell_name, status]
+		var ab = unit.get(key)
+		if ab == null:
+			continue
+		installed += 1
+		if unit.has_method("can_cast_" + key):
+			ready = ready or bool(unit.call("can_cast_" + key))
+		remaining = minf(remaining, float(unit.get(key + "_cooldown_remaining")))
+		total = maxf(total, float(ab.get("cooldown")))
+	slot.call("apply_state", installed > 0, ready, 0.0 if is_inf(remaining) else remaining, total)
 
 
 func _refresh() -> void:
 	if _title == null:
 		return
-	var alive: Array = []
-	for u in _selected:
-		if _alive(u):
-			alive.append(u)
+	var alive := _display_units()
 
 	var has := not alive.is_empty()
-	_refresh_spell_button(_bolt_btn, alive, "bolt", "Lightning Bolt", "RMB")
-	_refresh_spell_button(_melter_btn, alive, "melter", "Base Melter", "Q")
+	_refresh_slot(_bolt_btn, alive, "bolt")
+	_refresh_slot(_melter_btn, alive, "melter")
 	_stop_btn.disabled = not has
+	_update_stats_popup()
 
 	if not has:
 		_title.text = "Nothing selected"
 		_title.add_theme_color_override("font_color", TEXT)
-		_subtitle.text = "Click or drag a box to select a Hawk Rider."
+		_subtitle.text = ""
+		_lead_label.text = "Stats"
 		_hp_bar.value = 0.0
 		_mana_bar.value = 0.0
 		_hp_label.text = "Health"
 		_mana_label.text = "Mana"
-		_stats_label.text = "Spawn units with the side panels. Right-click to move."
+		for k in _stat_values:
+			(_stat_values[k] as Label).text = "-"
+			(_stat_values[k] as Label).remove_theme_color_override("font_color")
 		_cast_bar.value = 0.0
-		_cast_label.text = ""
+		_cast_label.text = "Click or drag to select a Hawk Rider"
 		return
 
 	var lead = alive[0]
@@ -604,9 +953,9 @@ func _refresh() -> void:
 	_title.add_theme_color_override("font_color", col)
 	if n == 1:
 		var si := clampi(int(lead.get("state")), 0, STATE_NAMES.size() - 1)
-		_subtitle.text = "%s  |  %s" % [team_name, STATE_NAMES[si]]
+		_subtitle.text = "%s | %s" % [team_name, STATE_NAMES[si]]
 	else:
-		_subtitle.text = "%d selected  |  %s" % [n, team_name]
+		_subtitle.text = "%d selected | %s" % [n, team_name]
 
 	var total := " (total)" if n > 1 else ""
 	_hp_bar.max_value = maxf(max_hp, 1.0)
@@ -615,12 +964,22 @@ func _refresh() -> void:
 	_mana_bar.max_value = maxf(max_mn, 1.0)
 	_mana_bar.value = clampf(mn, 0.0, maxf(max_mn, 1.0))
 	_mana_label.text = "Mana%s  %s / %s" % [total, _num(mn), _num(max_mn)]
+
 	var lst = lead.get("stats")
+	_lead_label.text = "Lead unit" if n > 1 else "Stats"
 	if lst != null:
-		_stats_label.text = "Move %s u/s   Damage %s   Armor %s" % [
-			_num(lst.get("move_speed")), _num(lst.get("attack_damage")), _num(lst.get("armor"))]
+		(_stat_values["damage"] as Label).text = _num(lst.get("attack_damage"))
+		(_stat_values["armor"] as Label).text = _num(lst.get("armor"))
+		var eff := _effective_move(lead)
+		var mv := _stat_values["move"] as Label
+		mv.text = _num(eff)
+		if eff < float(lst.get("move_speed")) - 0.01:
+			mv.add_theme_color_override("font_color", Color(1.0, 0.72, 0.4))
+		else:
+			mv.remove_theme_color_override("font_color")
 	else:
-		_stats_label.text = ""
+		for k in _stat_values:
+			(_stat_values[k] as Label).text = "-"
 
 	if cast_unit != null:
 		var s2 := int(cast_unit.get("state"))

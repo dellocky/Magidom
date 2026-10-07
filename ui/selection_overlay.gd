@@ -7,6 +7,7 @@ const ENEMY := Color(1.0, 0.47, 0.40)
 const MANA := Color(0.50, 0.44, 1.0)
 const ANCHOR_OFFSET := Vector3.UP * 2.6
 
+var vision_system: Node
 var marquee_rect := Rect2()
 var marquee_active := false
 var bar_width := 56.0
@@ -38,6 +39,8 @@ func _draw_unit_bars() -> void:
 		if not is_instance_valid(u) or not (u is Node3D):
 			continue
 		if u.has_method("is_alive") and not u.is_alive():
+			continue
+		if is_instance_valid(vision_system) and not vision_system.can_see_unit(vision_system.player_team, u):
 			continue
 		var world: Vector3 = u.global_position + ANCHOR_OFFSET
 		if cam.is_position_behind(world):

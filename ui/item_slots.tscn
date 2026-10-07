@@ -1,0 +1,67 @@
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+content_margin_left = 6.0
+content_margin_top = 6.0
+content_margin_right = 6.0
+content_margin_bottom = 6.0
+bg_color = Color(0.02, 0.05, 0.1, 0.9)
+border_width_left = 1
+border_width_top = 2
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.38, 0.82, 1, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slot"]
+bg_color = Color(0.03, 0.08, 0.15, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.15, 0.29, 0.43, 0.95)
+
+[node name="ItemSlots" type="PanelContainer"]
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="Grid" type="GridContainer" parent="."]
+layout_mode = 2
+theme_override_constants/h_separation = 4
+theme_override_constants/v_separation = 4
+columns = 3
+
+[node name="Slot1" type="Panel" parent="Grid"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+tooltip_text = "Empty item slot"
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="Slot2" type="Panel" parent="Grid"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+tooltip_text = "Empty item slot"
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="Slot3" type="Panel" parent="Grid"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+tooltip_text = "Empty item slot"
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="Slot4" type="Panel" parent="Grid"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+tooltip_text = "Empty item slot"
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="Slot5" type="Panel" parent="Grid"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+tooltip_text = "Empty item slot"
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")
+
+[node name="Slot6" type="Panel" parent="Grid"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+tooltip_text = "Empty item slot"
+theme_override_styles/panel = SubResource("StyleBoxFlat_slot")

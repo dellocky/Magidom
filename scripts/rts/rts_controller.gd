@@ -12,6 +12,7 @@ var _start := Vector2.ZERO
 var _additive: bool = false
 var _preview: MeshInstance3D
 var _range_preview: MeshInstance3D
+var _preview_caster: Node3D
 
 
 func _ready() -> void:
@@ -21,7 +22,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	var remaining: Array = selected.filter(func(unit): return is_instance_valid(unit) and unit.is_alive())
+	var remaining: Array = selected.filter(func(unit): return _can_control(unit))
 	if remaining.size() != selected.size():
 		set_selection(remaining)
 	if _dragging:
@@ -32,8 +33,10 @@ func _process(_delta: float) -> void:
 	if is_instance_valid(_preview):
 		_preview.global_position = Units.clamp_to_arena(rig.ground_point(get_viewport().get_mouse_position())) + Vector3.UP * 0.09
 		_preview.visible = not hud.pointer_over_ui(get_viewport().get_mouse_position())
-		if not selected.is_empty():
-			_range_preview.global_position = selected[0].global_position + Vector3.UP * 0.075
+		if _can_control(_preview_caster) and _preview_caster in selected and _preview_caster.melter != null:
+			_range_preview.global_position = _preview_caster.global_position + Vector3.UP * 0.075
+			_update_ring_radius(_preview, Units.to_metres(_preview_caster.effective_melter_radius_units(0.0)))
+			_update_ring_radius(_range_preview, Units.to_metres(_preview_caster.melter.range_units))
 		else:
 			cancel_targeting()
 
@@ -76,7 +79,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func set_selection(units: Array) -> void:
 	for unit in selected:
 		if is_instance_valid(unit): unit.selected = false
-	selected = units.duplicate()
+	selected = units.filter(func(unit): return _can_control(unit))
 	for unit in selected:
 		unit.selected = true
 	hud.set_selection(selected)
@@ -89,10 +92,12 @@ func _finish_selection(point: Vector2) -> void:
 	if point.distance_to(_start) < 7.0:
 		if not hud.pointer_over_ui(point):
 			var unit := pick_unit(point)
-			if unit != null: found.append(unit)
+			if _can_control(unit): found.append(unit)
 	else:
 		var rect := Rect2(_start, point - _start).abs()
 		for unit: Node3D in get_tree().get_nodes_in_group("rts_units"):
+			if not _can_control(unit):
+				continue
 			var anchor := unit.global_position + Vector3.UP
 			if not rig.camera.is_position_behind(anchor) and rect.has_point(rig.camera.unproject_position(anchor)):
 				found.append(unit)
@@ -116,7 +121,19 @@ func pick_unit(screen: Vector2) -> Node3D:
 	if result.is_empty():
 		return null
 	var unit: Node3D = result.collider.get_parent()
-	return unit if unit.is_alive() else null
+	return unit if unit.is_alive() and _can_see(unit) else null
+
+
+func _can_control(unit: Variant) -> bool:
+	if not is_instance_valid(unit) or not unit.is_alive():
+		return false
+	var vision: Node = level.get("vision_system") if is_instance_valid(level) else null
+	return vision.controls(unit) if is_instance_valid(vision) else true
+
+
+func _can_see(unit: Node3D) -> bool:
+	var vision: Node = level.get("vision_system") if is_instance_valid(level) else null
+	return vision.can_see_unit(vision.player_team, unit) if is_instance_valid(vision) else true
 
 
 func ground_hit(screen: Vector2) -> Variant:
@@ -137,6 +154,8 @@ func command_at(screen: Vector2) -> void:
 	var movers: Array = []
 	var accepted: int = 0
 	for unit in selected:
+		if not _can_control(unit):
+			continue
 		if target != null and unit.team != target.team:
 			if unit.issue_attack(target): accepted += 1
 		elif unit.accepts_orders():
@@ -163,14 +182,16 @@ func begin_targeting(mode: String) -> void:
 	if selected.is_empty():
 		hud.show_message("Select a Hawk Rider first.")
 		return
-	if not selected.any(func(unit): return unit.can_cast_melter() if mode == "melter" else unit.can_cast_bolt()):
+	var eligible: Array = selected.filter(func(unit): return _can_control(unit) and (unit.can_cast_melter() if mode == "melter" else unit.can_cast_bolt()))
+	if eligible.is_empty():
 		hud.show_message("No ready caster: check cooldown, mana and cast lock. S interrupts Base Melter.")
 		return
 	targeting = mode
 	hud.set_targeting(mode)
 	if mode == "melter":
-		_preview = FX.ring(level, Color(0.45, 0.72, 1), Units.to_metres(selected[0].melter.radius_units))
-		_range_preview = FX.ring(level, Color(0.3, 0.5, 0.7, 0.35), Units.to_metres(selected[0].melter.range_units))
+		_preview_caster = eligible[0]
+		_preview = FX.ring(level, Color(0.45, 0.72, 1), Units.to_metres(eligible[0].effective_melter_radius_units(0.0)))
+		_range_preview = FX.ring(level, Color(0.3, 0.5, 0.7, 0.35), Units.to_metres(eligible[0].melter.range_units))
 		hud.show_message("Base Melter: click ground inside the range ring. RMB / Esc cancels.")
 	else:
 		hud.show_message("Lightning Bolt: click an opposing unit. RMB / Esc cancels.")
@@ -182,11 +203,11 @@ func _confirm_target(screen: Vector2) -> void:
 		var point: Variant = ground_hit(screen)
 		if point == null: return
 		for unit in selected:
-			if unit.issue_cast_melter(point): count += 1
+			if _can_control(unit) and unit.issue_cast_melter(point): count += 1
 	else:
 		var target := pick_unit(screen)
 		for unit in selected:
-			if unit.issue_attack(target): count += 1
+			if _can_control(unit) and unit.issue_attack(target): count += 1
 	if count > 0:
 		cancel_targeting()
 	else:
@@ -197,7 +218,7 @@ func stop_selected() -> void:
 	cancel_targeting()
 	var stopped: int = 0
 	for unit in selected:
-		if unit.issue_stop(): stopped += 1
+		if _can_control(unit) and unit.issue_stop(): stopped += 1
 	hud.show_message("Stopped %d unit(s). Lightning Bolt cannot be interrupted." % stopped)
 
 
@@ -207,7 +228,16 @@ func cancel_targeting() -> void:
 	if is_instance_valid(_range_preview): _range_preview.queue_free()
 	_preview = null
 	_range_preview = null
+	_preview_caster = null
 	hud.set_targeting("")
+
+
+func _update_ring_radius(ring: MeshInstance3D, radius: float) -> void:
+	var diameter := 2.0 * (radius + 1.0)
+	ring.mesh.size = Vector2(diameter, diameter)
+	ring.material_override.set_shader_parameter("size_m", diameter)
+	ring.material_override.set_shader_parameter("radius_m", radius)
+	ring.material_override.set_shader_parameter("thickness_m", 0.09 + radius * 0.02)
 
 
 func _cancel_drag() -> void:

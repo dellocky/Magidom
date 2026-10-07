@@ -3,7 +3,7 @@ extends Node3D
 ## Create effects through the static factories; use `call("set_charge", x)`,
 ## `call("set_radius", m)` and `call("finish")` on the returned Node3D.
 
-enum Mode { CHARGE, BEAM, VORTEX, MARKER }
+enum Mode { CHARGE, BEAM, VORTEX, MARKER, STRIKE }
 
 const SynthAudio = preload("res://audio/synth_audio.gd")
 const SELF_PATH: String = "res://effects/combat_fx.gd"
@@ -16,12 +16,27 @@ const BEAM_LIFETIME: float = 0.65
 const BEAM_RADIUS: float = 2.5  # outer sheath radius (5 m across at full size)
 const MARKER_LIFETIME: float = 0.9
 const VORTEX_FADE: float = 0.3
+const STRIKE_LIFETIME: float = 0.25
+const STRIKE_HEIGHT: float = 14.0
+const STRIKE_PER_FRAME: int = 6    # visual budget only; gameplay never depends on it
+const STRIKE_MAX_ACTIVE: int = 40
 
 const WHITE: Color = Color(1.0, 1.0, 1.0)
 const BLUE: Color = Color(0.25, 0.6, 1.0)
 const DEEP_BLUE: Color = Color(0.1, 0.3, 1.0)
 
+static var _strike_frame: int = -1
+static var _strike_frame_count: int = 0
+static var _strike_active: int = 0
+
 var mode: int = Mode.CHARGE
+
+## Optional visibility rule re-evaluated every frame. Once a rule is set, an
+## invalid Callable (e.g. its owner was freed) hides the effect.
+var _vis_rule: Callable = Callable()
+var _has_rule: bool = false
+var _rule_visible: bool = true
+var _strike_counted: bool = false
 
 var _t: float = 0.0
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -77,19 +92,51 @@ static func charge(parent: Node3D) -> Node3D:
 	return fx
 
 
-static func beam(parent: Node3D, staff: Node3D, target_position: Vector3) -> Node3D:
+static func beam(parent: Node3D, staff: Node3D, target_position: Vector3,
+		visible_rule: Callable = Callable()) -> Node3D:
 	var fx: Node3D = _spawn(Mode.BEAM)
 	fx.set("_staff", staff)
 	fx.set("_target", target_position)
+	_set_rule(fx, visible_rule)
 	parent.add_child(fx)
 	return fx
 
 
-static func vortex(parent: Node3D, point: Vector3) -> Node3D:
+static func vortex(parent: Node3D, point: Vector3, visible_rule: Callable = Callable()) -> Node3D:
 	var fx: Node3D = _spawn(Mode.VORTEX)
 	fx.position = point
+	_set_rule(fx, visible_rule)
 	parent.add_child(fx)
 	return fx
+
+
+## Cheap downward lightning strike. Returns null when over the visual budget,
+## outside the tree, or currently hidden by the rule. Never affects gameplay.
+static func strike(parent: Node3D, point: Vector3, radius_m: float = 2.5,
+		visible_rule: Callable = Callable()) -> Node3D:
+	if parent == null or not parent.is_inside_tree():
+		return null
+	if visible_rule.is_valid() and not visible_rule.call():
+		return null
+	var frame: int = Engine.get_process_frames()
+	if frame != _strike_frame:
+		_strike_frame = frame
+		_strike_frame_count = 0
+	if _strike_frame_count >= STRIKE_PER_FRAME or _strike_active >= STRIKE_MAX_ACTIVE:
+		return null
+	_strike_frame_count += 1
+	var fx: Node3D = _spawn(Mode.STRIKE)
+	fx.position = point
+	fx.set("_radius", maxf(radius_m, 0.1))
+	_set_rule(fx, visible_rule)
+	parent.add_child(fx)
+	return fx
+
+
+static func _set_rule(fx: Node3D, rule: Callable) -> void:
+	if rule.is_valid():
+		fx.set("_vis_rule", rule)
+		fx.set("_has_rule", true)
 
 
 static func move_marker(parent: Node3D, point: Vector3) -> Node3D:
@@ -125,6 +172,18 @@ func set_radius(radius_metres: float) -> void:
 	_radius = maxf(radius_metres, 0.1)
 	if _shell != null:
 		_apply_vortex(1.0)
+
+
+func _apply_visibility_rule() -> void:
+	if not _has_rule:
+		return
+	var show: bool = _vis_rule.is_valid() and bool(_vis_rule.call())
+	if show == _rule_visible:
+		return
+	_rule_visible = show
+	visible = show
+	if _audio != null:
+		_audio.stream_paused = not show
 
 
 func finish() -> void:
@@ -313,6 +372,7 @@ func _make_light(color: Color) -> OmniLight3D:
 func _ready() -> void:
 	_rng.randomize()
 	process_priority = 1000  # after animation so staff-attached effects do not lag
+	_apply_visibility_rule()
 	match mode:
 		Mode.CHARGE:
 			_build_charge()
@@ -322,15 +382,22 @@ func _ready() -> void:
 			_build_vortex()
 		Mode.MARKER:
 			_build_marker()
+		Mode.STRIKE:
+			_build_strike()
+	_apply_visibility_rule()
 
 
 func _exit_tree() -> void:
 	if _audio != null:
 		_audio.stop()
+	if _strike_counted:
+		_strike_counted = false
+		_strike_active = maxi(_strike_active - 1, 0)
 
 
 func _process(delta: float) -> void:
 	_t += delta
+	_apply_visibility_rule()
 	match mode:
 		Mode.CHARGE:
 			_process_charge(delta)
@@ -340,6 +407,8 @@ func _process(delta: float) -> void:
 			_process_vortex(delta)
 		Mode.MARKER:
 			_process_marker()
+		Mode.STRIKE:
+			_process_strike()
 
 
 # ------------------------------------------------------------------ charge
@@ -434,7 +503,7 @@ func _build_beam() -> void:
 func _play_blast() -> void:
 	var host: Node = get_parent()
 	var stream: AudioStreamWAV = SynthAudio.stream("blast")
-	if host == null or stream == null:
+	if host == null or stream == null or not _rule_visible:
 		return
 	var p: AudioStreamPlayer3D = AudioStreamPlayer3D.new()
 	p.stream = stream
@@ -625,3 +694,36 @@ func _process_marker() -> void:
 	for i in _stroke_mats.size():
 		_stroke_mats[i].set_shader_parameter("progress", progress[i])
 		_stroke_mats[i].set_shader_parameter("fade", fade)
+
+
+# ------------------------------------------------------------------ strike
+
+func _build_strike() -> void:
+	_strike_counted = true
+	_strike_active += 1
+	_arc_mat = _arc_material(4.0)
+	_arcs = _mesh_node(ArrayMesh.new(), _arc_mat, self)
+	var bolts: Array = []
+	for i in 2:
+		var top: Vector3 = Vector3(_rng.randf_range(-1.0, 1.0), STRIKE_HEIGHT, _rng.randf_range(-1.0, 1.0))
+		bolts.append(_jagged(top, Vector3(_rng.randf_range(-0.2, 0.2), 0.0, _rng.randf_range(-0.2, 0.2)),
+			9, 0.9, _rng))
+	_arcs.mesh = _bolts_mesh(bolts, 0.32)
+	var size: float = 2.0 * (_radius + 0.5)
+	_disc_mat = _shader_mat(RING, {
+		"color": Color(0.55, 0.8, 1.0), "size_m": size, "radius_m": _radius,
+		"thickness_m": 0.14, "intensity": 2.0,
+	})
+	var plane: PlaneMesh = PlaneMesh.new()
+	plane.size = Vector2(size, size)
+	_disc = _mesh_node(plane, _disc_mat, self)
+	_disc.position.y = 0.05
+
+
+func _process_strike() -> void:
+	if _t >= STRIKE_LIFETIME:
+		queue_free()
+		return
+	var fade: float = 1.0 - pow(_t / STRIKE_LIFETIME, 2.0)
+	_arc_mat.set_shader_parameter("fade", fade)
+	_disc_mat.set_shader_parameter("fade", fade)

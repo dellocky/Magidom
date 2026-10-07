@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/rts/test_level.gd" id="1_level"]
 [ext_resource type="Shader" path="res://effects/shaders/arena_grid.gdshader" id="2_grid"]
+[ext_resource type="PackedScene" path="res://ui/test_level_hud.tscn" id="3_hud"]
 
 [sub_resource type="Environment" id="ArenaEnvironment"]
 background_mode = 1
@@ -23,6 +24,8 @@ data = PackedVector3Array(-0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0
 
 [node name="TestLevel" type="Node3D" unique_id=848730256]
 script = ExtResource("1_level")
+
+[node name="HUD" parent="." instance=ExtResource("3_hud")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("ArenaEnvironment")

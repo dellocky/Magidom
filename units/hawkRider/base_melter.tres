@@ -13,3 +13,7 @@ cooldown = 30.0
 duration = 24.0
 channel = true
 canDamageBuildings = true
+slow_fraction = 0.1
+strike_radius_units = 50.0
+baseline_volley_frequency = 1.0
+baseline_strikes_per_volley = 1.0

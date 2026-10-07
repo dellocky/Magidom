@@ -10,3 +10,4 @@ attack_damage = 999.0
 armor = 1.0
 max_health = 500.0
 max_mana = 200.0
+vision_range = 1000.0
