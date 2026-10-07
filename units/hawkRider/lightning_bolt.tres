@@ -4,6 +4,6 @@
 
 [resource]
 script = ExtResource("1")
-description = "Hurls a crackling bolt of lightning at a target enemy unit."
-lore = "The Hawk Rider does not aim; the sky itself chooses whom to smite."
+description = "Hurls a massive blast of lightning at a target enemy unit. They are probably dead by the time you've read this."
+lore = "He wanted to command the power of the Sun, but when he reached up to the heavens it was the storm that answered."
 cooldown = 60.0

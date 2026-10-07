@@ -6,7 +6,7 @@
 script = ExtResource("1")
 display_name = "Base Melter"
 description = "Channels a growing vortex of lightning that strikes enemies inside and drags their feet with static."
-lore = "Older warlocks whisper that the melter remembers every soul it has burned."
+lore = "The Hawk Rider does not aim; the sky itself chooses whom to smite."
 animation = &"staff_twirl"
 damage_type = &"ELECTRICAL"
 damage = 40.0
@@ -15,7 +15,3 @@ cooldown = 30.0
 duration = 24.0
 channel = true
 canDamageBuildings = true
-slow_fraction = 0.1
-strike_radius_units = 50.0
-baseline_volley_frequency = 1.0
-baseline_strikes_per_volley = 1.0

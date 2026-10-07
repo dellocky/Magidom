@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://bs4rql86jbbti"]
 
-[ext_resource type="Script" path="res://scripts/rts/test_level.gd" id="1_level"]
-[ext_resource type="Shader" path="res://effects/shaders/arena_grid.gdshader" id="2_grid"]
+[ext_resource type="Script" uid="uid://cr0qjlclgo425" path="res://scripts/rts/test_level.gd" id="1_level"]
+[ext_resource type="Shader" uid="uid://cdb4783wf5q43" path="res://effects/shaders/arena_grid.gdshader" id="2_grid"]
 [ext_resource type="PackedScene" path="res://ui/test_level_hud.tscn" id="3_hud"]
 
 [sub_resource type="Environment" id="ArenaEnvironment"]
@@ -14,7 +14,10 @@ tonemap_mode = 2
 glow_enabled = true
 
 [sub_resource type="ShaderMaterial" id="StandardMaterial3D_eoppq"]
+render_priority = 0
 shader = ExtResource("2_grid")
+shader_parameter/fog_enabled = false
+shader_parameter/map_bounds = Vector4(-50, -50, 100, 100)
 
 [sub_resource type="BoxMesh" id="BoxMesh_jt5rq"]
 material = SubResource("StandardMaterial3D_eoppq")
@@ -25,19 +28,19 @@ data = PackedVector3Array(-0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0
 [node name="TestLevel" type="Node3D" unique_id=848730256]
 script = ExtResource("1_level")
 
-[node name="HUD" parent="." instance=ExtResource("3_hud")]
+[node name="HUD" parent="." unique_id=1627513633 instance=ExtResource("3_hud")]
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2141036132]
 environment = SubResource("ArenaEnvironment")
 
-[node name="KeyLight" type="DirectionalLight3D" parent="."]
-rotation_degrees = Vector3(-52, -25, 0)
+[node name="KeyLight" type="DirectionalLight3D" parent="." unique_id=991026096]
+transform = Transform3D(0.90630776, 0.33302772, -0.2601898, 0, 0.6156615, 0.7880107, 0.42261827, -0.71418023, 0.5579788, 0, 0, 0)
 light_color = Color(0.93, 0.94, 1, 1)
 light_energy = 1.65
 shadow_enabled = true
 
-[node name="RimLight" type="DirectionalLight3D" parent="."]
-rotation_degrees = Vector3(-28, 145, 0)
+[node name="RimLight" type="DirectionalLight3D" parent="." unique_id=498792815]
+transform = Transform3D(-0.81915206, -0.26927784, 0.50643796, 0, 0.88294756, 0.46947157, -0.57357645, 0.3845686, -0.72326833, 0, 0, 0)
 light_color = Color(0.35, 0.65, 1, 1)
 light_energy = 0.6
 
