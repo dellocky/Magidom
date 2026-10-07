@@ -19,6 +19,7 @@ const SCHEDULE_STEP: float = 0.05
 const CREDIT_EPSILON: float = 1e-9
 const MIN_AOE_MULTIPLIER: float = 0.01
 const MAX_AOE_MULTIPLIER: float = 100.0
+const SELECTION_RING_RADIUS: float = 2.15
 
 @export_enum("Friendly", "Enemy") var team: int = 0
 @export var stats: Stats = preload("res://units/hawkRider/hawk_rider_stats.tres")
@@ -86,7 +87,7 @@ func _ready() -> void:
 	_setup_staff_tip()
 	var team_color := Color(0.18, 0.72, 1.0) if team == 0 else Color(1.0, 0.28, 0.24)
 	FX.ring(self, team_color, 1.8).position.y = 0.045
-	_selection_ring = FX.ring(self, Color(0.4, 1.0, 0.55), 2.15)
+	_selection_ring = FX.ring(self, Color(0.4, 1.0, 0.55), SELECTION_RING_RADIUS)
 	_selection_ring.position.y = 0.06
 	_selection_ring.visible = selected
 	_flap_sound = AudioStreamPlayer3D.new()
@@ -100,6 +101,14 @@ func _ready() -> void:
 	_charge_sound.max_distance = 85.0
 	add_child(_charge_sound)
 	_play(&"idle")
+
+
+func get_selection_ring_position() -> Vector3:
+	return _selection_ring.global_position if is_instance_valid(_selection_ring) else global_position
+
+
+func get_selection_ring_radius() -> float:
+	return SELECTION_RING_RADIUS
 
 
 func _setup_staff_tip() -> void:
