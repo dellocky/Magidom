@@ -96,10 +96,7 @@ func _finish_selection(point: Vector2) -> void:
 	else:
 		var rect := Rect2(_start, point - _start).abs()
 		for unit: Node3D in get_tree().get_nodes_in_group("rts_units"):
-			if not _can_control(unit):
-				continue
-			var anchor := unit.global_position + Vector3.UP
-			if not rig.camera.is_position_behind(anchor) and rect.has_point(rig.camera.unproject_position(anchor)):
+			if _can_control(unit) and _selection_ring_overlaps_rect(unit, rect):
 				found.append(unit)
 	if _additive:
 		var merged := selected.duplicate()
@@ -113,15 +110,50 @@ func _finish_selection(point: Vector2) -> void:
 		set_selection(found)
 
 
+func _selection_ring_overlaps_rect(unit: Node3D, rect: Rect2) -> bool:
+	var ring_position: Vector3 = unit.get_selection_ring_position()
+	if rig.camera.is_position_behind(ring_position):
+		return false
+	var radius: float = unit.get_selection_ring_radius()
+	var min_screen := Vector2(INF, INF)
+	var max_screen := Vector2(-INF, -INF)
+	for sample in 32:
+		var angle: float = TAU * float(sample) / 32.0
+		var ring_point := ring_position + Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
+		if rig.camera.is_position_behind(ring_point):
+			continue
+		var screen_point: Vector2 = rig.camera.unproject_position(ring_point)
+		min_screen.x = minf(min_screen.x, screen_point.x)
+		min_screen.y = minf(min_screen.y, screen_point.y)
+		max_screen.x = maxf(max_screen.x, screen_point.x)
+		max_screen.y = maxf(max_screen.y, screen_point.y)
+	if min_screen.x == INF:
+		return false
+	return rect.intersects(Rect2(min_screen, max_screen - min_screen), true)
+
+
 func pick_unit(screen: Vector2) -> Node3D:
-	var ray: Vector3 = rig.camera.project_ray_normal(screen)
 	var origin: Vector3 = rig.camera.project_ray_origin(screen)
-	var query := PhysicsRayQueryParameters3D.create(origin, origin + ray * 300.0, 2)
-	var result: Dictionary = level.get_world_3d().direct_space_state.intersect_ray(query)
-	if result.is_empty():
-		return null
-	var unit: Node3D = result.collider.get_parent()
-	return unit if unit.is_alive() and _can_see(unit) else null
+	var ray: Vector3 = rig.camera.project_ray_normal(screen)
+	var closest_unit: Node3D
+	var closest_distance_squared: float = INF
+	for unit: Node3D in get_tree().get_nodes_in_group("rts_units"):
+		if not unit.is_alive() or not _can_see(unit):
+			continue
+		var ring_position: Vector3 = unit.get_selection_ring_position()
+		if rig.camera.is_position_behind(ring_position):
+			continue
+		var ring_plane := Plane(Vector3.UP, ring_position.y)
+		var hit: Variant = ring_plane.intersects_ray(origin, ray)
+		if hit == null:
+			continue
+		var offset := Vector2(hit.x - ring_position.x, hit.z - ring_position.z)
+		var distance_squared: float = offset.length_squared()
+		var ring_radius: float = unit.get_selection_ring_radius()
+		if distance_squared <= ring_radius * ring_radius and distance_squared < closest_distance_squared:
+			closest_unit = unit
+			closest_distance_squared = distance_squared
+	return closest_unit
 
 
 func _can_control(unit: Variant) -> bool:
