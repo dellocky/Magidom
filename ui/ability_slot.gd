@@ -53,6 +53,11 @@ func setup(kind: String, key: String, accent_color: Color, is_empty: bool = fals
 		toggle_mode = false
 
 
+## Swap the drawn glyph kind at runtime (e.g. "bolt" -> "whack" for the Martyr).
+func set_glyph_kind(kind: String) -> void:
+	glyph.kind = kind
+
+
 func apply_state(is_installed: bool, ready: bool, remaining: float, total: float) -> void:
 	if empty_slot:
 		return

@@ -14,6 +14,10 @@ extends Resource
 @export var release_time: float = 1.82
 @export var channel: bool = false
 @export var canDamageBuildings: bool = false
+## Cast on self with no ground/target pick (used by the Martyr's Human Baneling).
+@export var self_cast: bool = false
+## hud_glyph.gd draw kind for the ability slot ("whack", "baneling", ...).
+@export var glyph: String = ""
 @export var radius_units: float = 50.0
 @export var growth_per_second: float = 0.25
 @export var maximum_radius_bonus: float = 5.0

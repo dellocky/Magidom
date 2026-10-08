@@ -1,0 +1,18 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://scripts/rts/ability_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Whack"
+description = "An open-handed slap for anyone who wanders too close. The auto-attack."
+lore = "Some bring thunder, some bring steel; the Martyr brings a backhand and full commitment."
+animation = &"slap"
+damage_type = &"BAM"
+damage = 35.0
+range_units = 70.0
+mana_cost = 0.0
+cooldown = 0.8
+duration = 1.967
+release_time = 0.4
+glyph = "whack"

@@ -213,6 +213,17 @@ func begin_targeting(mode: String) -> void:
 	if selected.is_empty():
 		hud.play_deny()
 		return
+	# Self-cast spells (Martyr's Human Baneling) never need a target: fire at once.
+	if mode == "melter":
+		var casters: Array = selected.filter(func(unit): return _can_control(unit) and unit.melter != null and bool(unit.melter.get("self_cast")))
+		if not casters.is_empty():
+			var fired := 0
+			for unit in casters:
+				if unit.issue_cast_melter(unit.global_position):
+					fired += 1
+			if fired == 0:
+				hud.play_deny()
+			return
 	var eligible: Array = selected.filter(func(unit): return _can_control(unit) and (unit.can_cast_melter() if mode == "melter" else unit.can_cast_bolt()))
 	if eligible.is_empty():
 		hud.play_deny()

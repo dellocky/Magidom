@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/rts/faction.gd" id="1"]
 [ext_resource type="Resource" path="res://data/global_spells/warlock_frenzy.tres" id="2"]
+[ext_resource type="PackedScene" path="res://units/martyr/martyr_unit.tscn" id="3"]
 
 [resource]
 script = ExtResource("1")
@@ -9,4 +10,6 @@ id = &"warlocks"
 display_name = "Warlocks"
 color = Color(0.62, 0.23, 0.78, 1)
 description = "Dark bargainers who trade vitality for speed."
+unit_scene = ExtResource("3")
+unit_display_name = "Martyr"
 global_spell = ExtResource("2")

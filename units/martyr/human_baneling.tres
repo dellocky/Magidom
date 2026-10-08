@@ -1,0 +1,15 @@
+[gd_resource type="Resource" format=3 uid="uid://vx13pm4ikj6j"]
+
+[ext_resource type="Script" uid="uid://det6ws18r3wr8" path="res://scripts/rts/ability_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Human Baneling"
+description = "Enters self destruct mode and blows up on contact with an enemy."
+lore = "The last prayer is loud."
+animation = &"sillyrun"
+damage = 200.0
+range_units = 0.0
+cooldown = 12.0
+growth_per_second = 0.0
+maximum_radius_bonus = 0.0

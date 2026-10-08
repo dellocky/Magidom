@@ -52,6 +52,21 @@ func _draw() -> void:
 			# Two rising chevrons: a speed/buff mark.
 			draw_polyline(PackedVector2Array([_p(o, side, 0.24, 0.78), _p(o, side, 0.42, 0.46), _p(o, side, 0.60, 0.78)]), color, w)
 			draw_polyline(PackedVector2Array([_p(o, side, 0.56, 0.90), _p(o, side, 0.74, 0.58), _p(o, side, 0.92, 0.90)]), color, w)
+		"whack":
+			# Open palm with three motion lines: a melee slap.
+			draw_line(_p(o, side, 0.18, 0.70), _p(o, side, 0.18, 0.30), color, w)
+			draw_line(_p(o, side, 0.36, 0.70), _p(o, side, 0.36, 0.30), color, w)
+			draw_line(_p(o, side, 0.55, 0.70), _p(o, side, 0.55, 0.30), color, w)
+			draw_line(_p(o, side, 0.62, 0.70), _p(o, side, 0.62, 0.30), color, w)
+			draw_line(_p(o, side, 0.12, 0.30), _p(o, side, 0.68, 0.30), color, w)
+			draw_arc(_p(o, side, 0.40, 0.30), side * 0.28, PI, TAU, 12, color, w)
+		"baneling":
+			# Eight-spike starburst with a hot centre: a detonation.
+			var c := o + Vector2(side, side) * 0.5
+			draw_circle(c, side * 0.10, color)
+			for i in 8:
+				var angle: float = TAU * float(i) / 8.0
+				draw_line(c, c + Vector2(cos(angle), sin(angle)) * side * 0.42, color, w)
 		_:
 			draw_rect(Rect2(o + Vector2(side, side) * 0.22, Vector2(side, side) * 0.56), color, false, 1.0)
 

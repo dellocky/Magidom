@@ -61,6 +61,7 @@ var _charge: Node3D
 var _vortex: Node3D
 var _released: bool = false
 var _flap_phase: float = 0.0
+@onready var _animation_base_move_speed: float = stats.move_speed
 var _fog_hidden: bool = false
 var _pick_layer_original: int = 1
 var _aoe_modifiers: Dictionary = {}
@@ -243,6 +244,12 @@ func get_effective_move_speed() -> float:
 	return stats.move_speed * (1.0 - get_move_slow_fraction()) * (1.0 + frenzy_move_bonus)
 
 
+func _movement_animation_delta(delta: float) -> float:
+	if state in [State.MOVING, State.CHASING]:
+		return delta * get_effective_move_speed() / maxf(_animation_base_move_speed, 0.001)
+	return delta
+
+
 ## Apply (or refresh) the frenzy global-spell buff: +move bonus while burning a
 ## fraction of max health every second, for `duration` seconds.
 func apply_frenzy(move_bonus: float, drain_fraction: float, duration: float) -> void:
@@ -400,7 +407,8 @@ func advance_simulation(delta: float) -> void:
 					_set_state(State.IDLE)
 			else:
 				_move_toward(attack_target.global_position, delta)
-	player.advance(delta)
+	var animation_delta := _movement_animation_delta(delta)
+	player.advance(animation_delta)
 	if state == State.BOLT:
 		cast_elapsed = player.current_animation_position
 		if not _released and cast_elapsed >= bolt.release_time:
@@ -413,7 +421,7 @@ func advance_simulation(delta: float) -> void:
 		_advance_channel(delta)
 	elif state in [State.IDLE, State.MOVING, State.CHASING]:
 		var period: float = 1.2 if state == State.IDLE else 0.8
-		_flap_phase += delta
+		_flap_phase += animation_delta
 		if _flap_phase >= period:
 			_flap_phase = fmod(_flap_phase, period)
 			if effects_enabled and not _fog_hidden:

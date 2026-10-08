@@ -1,0 +1,10 @@
+[gd_resource type="Resource" format=3 uid="uid://iiqv15r26jlw"]
+
+[ext_resource type="Script" uid="uid://sjflc2gjhbit" path="res://scripts/rts/unit_stats.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Martyr"
+attack_damage = 35.0
+max_health = 300.0
+max_mana = 0.0

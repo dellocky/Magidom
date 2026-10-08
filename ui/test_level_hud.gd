@@ -919,6 +919,37 @@ func _num(v: Variant) -> String:
 	return str(int(roundf(float(v))))
 
 
+## Human-readable name for the cast in progress, falling back to the fixed table.
+func _state_name(unit: Variant) -> String:
+	if unit == null:
+		return ""
+	var s := int(unit.get("state"))
+	if s == STATE_BOLT:
+		var b = unit.get("bolt")
+		if b != null:
+			return str(b.get("display_name"))
+	elif s == STATE_CHANNEL:
+		var m = unit.get("melter")
+		if m != null:
+			return str(m.get("display_name"))
+	return STATE_NAMES[clampi(s, 0, STATE_NAMES.size() - 1)]
+
+
+## Pick the glyph kind for an ability slot from the lead unit's ability (falls back
+## to the slot's default kind when the ability declares none).
+func _update_slot_glyph(slot: Button, units: Array, key: String, fallback: String) -> void:
+	var kind := fallback
+	for unit in units:
+		var ab = unit.get(key)
+		if ab == null:
+			continue
+		var gv = ab.get("glyph")
+		if gv != null and str(gv) != "":
+			kind = str(gv)
+			break
+	slot.call("set_glyph_kind", kind)
+
+
 func _refresh_slot(slot: Button, units: Array, key: String) -> void:
 	var installed := 0
 	var ready := false
@@ -964,6 +995,8 @@ func _refresh() -> void:
 		return
 
 	var lead = alive[0]
+	_update_slot_glyph(_bolt_btn, alive, "bolt", "bolt")
+	_update_slot_glyph(_melter_btn, alive, "melter", "melter")
 	var n := alive.size()
 	var teams := {}
 	var hp := 0.0
@@ -998,8 +1031,7 @@ func _refresh() -> void:
 	_title.text = uname if n == 1 else "%s  x%d" % [uname, n]
 	_title.add_theme_color_override("font_color", col)
 	if n == 1:
-		var si := clampi(int(lead.get("state")), 0, STATE_NAMES.size() - 1)
-		_subtitle.text = "%s | %s" % [team_name, STATE_NAMES[si]]
+		_subtitle.text = "%s | %s" % [team_name, _state_name(lead)]
 	else:
 		_subtitle.text = "%d selected | %s" % [n, team_name]
 
@@ -1034,7 +1066,7 @@ func _refresh() -> void:
 		if spell != null:
 			dur = float(spell.get("duration"))
 		var el := float(cast_unit.get("cast_elapsed"))
-		var nm := "Lightning Bolt" if s2 == STATE_BOLT else "Base Melter"
+		var nm := str(spell.get("display_name")) if spell != null else ("Lightning Bolt" if s2 == STATE_BOLT else "Base Melter")
 		_cast_bar.max_value = maxf(dur, 0.01)
 		_cast_bar.value = clampf(el, 0.0, maxf(dur, 0.01))
 		_cast_label.text = "%s  %.1f / %.1fs" % [nm, minf(el, dur), dur]
@@ -1162,7 +1194,8 @@ func _show_melter_tooltip() -> void:
 		return
 	var ab = lead.get("melter")
 	if ab != null:
-		_tooltip.show_ability(ab, GLYPH_MELTER, " (Q, ground target)")
+		var sub := " (Q, self-cast)" if bool(ab.get("self_cast")) else " (Q, ground target)"
+		_tooltip.show_ability(ab, GLYPH_MELTER, sub)
 		_position_tooltip(_melter_btn)
 
 

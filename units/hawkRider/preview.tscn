@@ -19,8 +19,9 @@ outline_color = Color(0.02, 0.03, 0.05, 1)
 
 [node name="HawkRiderPreview" type="Node3D" unique_id=1765350890]
 script = ExtResource("2_script")
+starting_clip = null
 
-[node name="HawkRider" parent="." unique_id=1696207413 instance=ExtResource("1_unit")]
+[node name="HawkRider" parent="." unique_id=1127271464 instance=ExtResource("1_unit")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1400829655]
 environment = SubResource("Environment_preview")
